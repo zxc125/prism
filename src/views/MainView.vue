@@ -4,6 +4,11 @@ import { invoke } from "@tauri-apps/api/core";
 const name = ref("");
 const greetMsg = ref("");
 
+const recording = ref(false);
+const sessions = ref<
+  Array<{ id: string; startedAt: number; endedAt?: number }>
+>([]);
+
 async function greet() {
   if (!name.value) {
     ElMessage.warning("请输入名字");
@@ -17,8 +22,36 @@ async function greet() {
   }
 }
 
+async function refreshSessions() {
+  try {
+    sessions.value = await invoke("list_sessions");
+  } catch (e) {
+    ElMessage.error(`读取列表失败: ${e}`);
+  }
+}
+
+async function startSession() {
+  try {
+    await invoke("start_session");
+    recording.value = true;
+    ElMessage.success("已开始录制");
+  } catch (e) {
+    ElMessage.error(`开始失败: ${e}`);
+  }
+}
+
+async function stopSession() {
+  try {
+    await invoke("stop_session");
+    recording.value = false;
+    ElMessage.success("已停止录制");
+    await refreshSessions();
+  } catch (e) {
+    ElMessage.error(`停止失败: ${e}`);
+  }
+}
+
 async function openSettings() {
-  // 单实例：label 固定为 settings，已存在则聚焦
   try {
     await invoke("open_window", { route: "/settings" });
   } catch (e) {
@@ -26,15 +59,43 @@ async function openSettings() {
   }
 }
 
-async function openPlayer() {
-  // 多实例：随机 id 生成不同 label，可同时开多个
-  const id = Math.random().toString(36).slice(2, 8);
+async function openPlayer(id: string) {
   try {
     await invoke("open_window", { route: `/player/${id}` });
   } catch (e) {
     ElMessage.error(`打开失败: ${e}`);
   }
 }
+
+async function deleteSession(id: string) {
+  try {
+    await ElMessageBox.confirm("确定删除该录制？", "提示", {
+      type: "warning",
+    });
+  } catch {
+    return;
+  }
+  try {
+    await invoke("delete_session", { id });
+    await refreshSessions();
+    ElMessage.success("已删除");
+  } catch (e) {
+    ElMessage.error(`删除失败: ${e}`);
+  }
+}
+
+function fmt(ts?: number) {
+  if (!ts) return "-";
+  return new Date(ts).toLocaleString("zh-CN");
+}
+
+function duration(s: { startedAt: number; endedAt?: number } | Record<string, unknown>) {
+  const end = (s as { endedAt?: number }).endedAt ?? Date.now();
+  const sec = Math.round((end - (s as { startedAt: number }).startedAt) / 1000);
+  return `${sec}s`;
+}
+
+onMounted(refreshSessions);
 </script>
 
 <template>
@@ -63,8 +124,44 @@ async function openPlayer() {
 
       <el-space>
         <el-button @click="openSettings">打开设置窗口</el-button>
-        <el-button type="success" @click="openPlayer">打开播放器窗口</el-button>
       </el-space>
+
+      <el-divider />
+
+      <h3>录制</h3>
+      <el-space>
+        <el-button
+          :type="recording ? 'danger' : 'success'"
+          @click="recording ? stopSession() : startSession()"
+        >
+          {{ recording ? "停止录制" : "开始录制" }}
+        </el-button>
+        <el-button @click="refreshSessions">刷新列表</el-button>
+      </el-space>
+
+      <el-table
+        :data="sessions"
+        size="small"
+        style="margin-top: 12px"
+        empty-text="暂无录制"
+      >
+        <el-table-column label="开始时间" width="200">
+          <template #default="{ row }">{{ fmt(row.startedAt) }}</template>
+        </el-table-column>
+        <el-table-column label="时长" width="80">
+          <template #default="{ row }">{{ duration(row) }}</template>
+        </el-table-column>
+        <el-table-column label="操作">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" @click="openPlayer(row.id)">
+              回放
+            </el-button>
+            <el-button size="small" type="danger" @click="deleteSession(row.id)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
     </el-card>
   </main>
 </template>
@@ -78,11 +175,15 @@ async function openPlayer() {
 
 .box {
   width: 100%;
-  max-width: 560px;
+  max-width: 640px;
 }
 
 h2 {
   margin: 0;
+}
+
+h3 {
+  margin: 0 0 8px;
 }
 
 .desc {

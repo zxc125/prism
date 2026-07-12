@@ -18,7 +18,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 架构
 
-Tauri 2 桌面应用：Vue 3 + Vite 6 前端位于 [src/](src/)，Rust 后端位于 [src-tauri/](src-tauri/)。尽管仓库名为 `rrweb-demo`，**rrweb 尚未接入** - [src/views/PlayerView.vue](src/views/PlayerView.vue) 是占位页面（"在此接入 rrweb 播放逻辑"）。
+Tauri 2 桌面应用：Vue 3 + Vite 6 前端位于 [src/](src/)，Rust 后端位于 [src-tauri/](src-tauri/)。基于 rrweb 2 实现**多窗口录制与回放**。
+
+### 录制 / 回放系统（横跨前端 + 后端）
+
+rrweb 在前端 webview 里跑，每个窗口各一个 `record()` 实例；事件按 segment 流式落盘到 `appDataDir/recordings/<sessionId>/`：
+
+```
+recordings/<sessionId>/
+  session.json          # { id, startedAt, endedAt }
+  windows.jsonl         # 窗口生命周期: shown/hidden/focus，带 segmentId
+  segments/<label>#<n>.jsonl   # 每段 rrweb 事件流（一次 show ~ hide = 一段）
+```
+
+关键机制（需结合多文件理解）：
+
+- **会话与段**：`start_session` 置 active 并广播 `recording-session` 事件；各窗口的 `useRecorder`（[src/composables/useRecorder.ts](src/composables/useRecorder.ts)，由 [App.vue](src/App.vue) 挂载）收到后 `invoke("begin_segment")` 分配 segmentId `<label>#<n>` 并启动 rrweb。`player-*` 窗口跳过录制（避免回放被录进会话）。
+- **子窗口关闭=隐藏**：录制期间，子窗口的 `CloseRequested` 被拦截为 `hide()` + 记 `hidden` + `emit_to` segment:stop；再次 `open_window` 复用已隐藏窗口时 `show()` + `emit_to` segment:start 开新段。主窗口关闭不拦截 = 退出进程。见 [src-tauri/src/lib.rs](src-tauri/src/lib.rs) `on_window_event`。
+- **跨窗口对齐**：rrweb 事件带绝对 `timestamp`，所有窗口共享墙上时钟，回放时按 `shown.t ~ hidden.t` 区间在主时间轴上同步驱动各 segment 的 `Replayer`。见 [src/composables/usePlayer.ts](src/composables/usePlayer.ts)。
+- **回放**：[src/views/PlayerView.vue](src/views/PlayerView.vue) 用底层 `Replayer`（rrweb-player 是 Vue 2，不能用）+ 自建 Element Plus 控制条，平铺显示当前活跃窗口。
+- 新增的 Tauri command（`start_session`/`stop_session`/`begin_segment`/`append_events`/`list_sessions`/`read_session`/`delete_session`）均已注册在 `generate_handler![]`；自定义 command 无需在 capabilities 里授权。
 
 ### 多窗口系统（横跨前端 + 后端）
 

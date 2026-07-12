@@ -139,6 +139,16 @@ fn start_session(app: tauri::AppHandle, state: tauri::State<Mutex<Session>>) -> 
         json!({ "id": id, "startedAt": started_at }).to_string(),
     )
     .map_err(|e| e.to_string())?;
+    // 补记初始 focus：会话开始时当前聚焦窗口，避免 focus 时间线在 t=0 为空
+    for (label, w) in app.webview_windows() {
+        if !label.starts_with("player-") && w.is_focused().unwrap_or(false) {
+            let _ = append_lifecycle(
+                &dir,
+                json!({ "type": "focus", "label": label, "t": now_ms() }),
+            );
+            break;
+        }
+    }
     // 广播：已挂载的各窗口收到后各自 begin_segment
     app.emit("recording-session", json!({ "active": true, "id": id }))
         .map_err(|e| e.to_string())?;
@@ -327,7 +337,8 @@ fn on_window_event(window: &Window, event: &WindowEvent) {
             );
         }
         WindowEvent::Focused(focused) => {
-            if *focused {
+            // 回放窗不参与录制，跳过其 focus 事件，避免 windows.jsonl 出现无 segment 的孤儿记录
+            if *focused && !label.starts_with("player-") {
                 let Some(state) = app.try_state::<Mutex<Session>>() else {
                     return;
                 };

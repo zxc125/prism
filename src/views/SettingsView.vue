@@ -36,14 +36,11 @@ function save() {
 
 <style scoped>
 .page {
-  display: flex;
-  justify-content: center;
   padding: 40px 16px;
 }
 
 .box {
   width: 100%;
-  max-width: 480px;
 }
 
 h2 {

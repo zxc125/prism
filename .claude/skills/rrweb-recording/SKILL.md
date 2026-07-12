@@ -31,11 +31,11 @@ recordings/<sessionId>/
 
 | 事件 | Rust 动作 | 前端动作 |
 | --- | --- | --- |
-| 主窗口点「开始录制」 | `start_session`：置 active、建目录、写 session.json、广播 `recording-session{active:true}` | 各窗口 `useRecorder` 收到广播 -> `invoke("begin_segment")` -> 启动 rrweb |
+| 主窗口点「开始录制」 | `start_session`：置 active、建目录、写 session.json、补记初始 focus、广播 `recording-session{active:true}` | 各窗口 `useRecorder` 收到广播 -> `invoke("begin_segment")` -> 启动 rrweb |
 | 新窗口首次创建 | `open_window` build | 新窗口 `useRecorder` 挂载时 `is_recording_active` 兜底为 true -> `begin_segment` |
 | 已隐藏窗口再次打开 | `open_window`：`show()`+`focus()`，录制中则 `emit_to(label,"segment",{start})` | `useRecorder` 收到 start -> `begin_segment` 开新段 |
 | 子窗口点 X 关闭（录制中） | `on_window_event` CloseRequested：`prevent_close`+`hide`、记 hidden、`emit_to` segment:stop | `useRecorder` 收到 stop -> 调 rrweb stop fn、flush |
-| 窗口聚焦 | `on_window_event` Focused：记 focus | - |
+| 窗口聚焦 | `on_window_event` Focused：记 focus（跳过 `player-*`） | - |
 | 主窗口关闭 | 不拦截 -> 退出进程 | - |
 | 点「停止录制」 | `stop_session`：置 inactive、关闭所有活跃段、广播 `recording-session{active:false}`、写 endedAt | 各窗口停录 |
 
@@ -48,6 +48,9 @@ recordings/<sessionId>/
 - **player-* 窗口跳过录制**：回放窗口本身不能被录进会话，否则污染数据。
 - **底层 `Replayer` 而非 `rrweb-player`**：后者是 Vue 2 组件，不能用于 Vue 3；自建 Element Plus 控制条 + 平铺 iframe。
 - **JSONL 格式**：可流式追加、断电不丢整文件、回放按行 parse。
+- **稳定槽位 + spotlight 主窗口**：回放时每个 label 占一个固定网格槽位（不随 show/hide reflow）；主窗口由 focus 时间线自动跟踪或手动选择，占大格，其余为侧槽。主槽/侧槽切换只改 CSS class（`is-main` + `grid-row:1/-1`），**不 reparent** Replayer 容器——rrweb 用 iframe 承载 mirror，reparent 会触发重新加载。
+- **漂移阈值纠偏**：各 Replayer 独立 RAF 与主时钟（`setInterval(50)` + `performance.now()`）可能漂移；`tick` 内读 `replayer.getCurrentTime()` 与期望值对比，超 `DRIFT_THRESHOLD`(120ms) 则 `replayer.play(expect)` re-seek 拉回。rrweb 2.x `play(offset)` 内部先 PAUSE 再 PLAY(offset)，seek+续播一次完成。
+- **focus 时间线**：`windows.jsonl` 的 focus 事件驱动自动主窗口；`start_session` 时补记初始 focus（遍历 `webview_windows().is_focused()`），避免 t=0 时间线为空；player-* 窗口的 focus 已过滤，不产生孤儿记录。
 
 ### 文件职责
 
@@ -55,10 +58,10 @@ recordings/<sessionId>/
 | --- | --- |
 | [src-tauri/src/lib.rs](src-tauri/src/lib.rs) | `Session` 状态、录制相关命令、`open_window`、`on_window_event` 生命周期拦截 |
 | [src/composables/useRecorder.ts](src/composables/useRecorder.ts) | 每窗口录制器：监听会话广播与段事件、缓冲 flush、`player-*` 跳过 |
-| [src/composables/usePlayer.ts](src/composables/usePlayer.ts) | 回放控制器：加载会话、按区间驱动各 `Replayer`、play/pause/seek/倍速 |
+| [src/composables/usePlayer.ts](src/composables/usePlayer.ts) | 回放控制器：加载会话、按区间驱动各 `Replayer`、play/pause/seek/倍速、稳定槽位、spotlight 主窗口（auto focus + 手动）、漂移纠偏、时间轴色带数据 |
 | [src/App.vue](src/App.vue) | 挂载 `useRecorder`，使每个窗口都参与录制 |
 | [src/views/MainView.vue](src/views/MainView.vue) | 开始/停止录制 + 会话列表（回放/删除） |
-| [src/views/PlayerView.vue](src/views/PlayerView.vue) | 平铺回放 UI + 控制条 |
+| [src/views/PlayerView.vue](src/views/PlayerView.vue) | spotlight 回放 UI + 控制条（时间轴色带 + focus 标记 + 主窗口切换 + 自动跟随开关） |
 
 ### Rust 命令清单
 
@@ -72,7 +75,12 @@ recordings/<sessionId>/
 - 子窗口关闭=隐藏、再开重录（分段），主窗口关闭=退出。
 - 事件流式落盘（每秒 flush 一次）。
 - 会话列表、删除。
-- 多窗口平铺回放：播放/暂停/进度拖动/倍速，按 shown/hidden 区间切换可见 segment。
+- 多窗口回放：播放/暂停/进度拖动/倍速，按 shown/hidden 区间切换可见 segment。
+- 稳定槽位布局：每个 label 一个固定网格槽位，show/hide 不 reflow；隐藏窗口显示占位。
+- spotlight 主窗口：focus 时间线自动跟踪 + 手动点击选主 + 自动跟随开关；主槽占大格、侧槽堆叠，CSS 切换不 reparent。
+- 时间轴色带：主进度条上方叠加每窗口活跃区间色带 + focus 切换标记 + playhead，支持点击 seek。
+- 漂移阈值纠偏：各 Replayer 与主时钟偏差超 120ms 时 re-seek 对齐。
+- focus 数据补强：会话开始补记初始 focus、过滤 player-* focus 事件。
 
 ### 编译验证
 
@@ -84,29 +92,30 @@ recordings/<sessionId>/
 
 **运行时未在桌面环境实测**——需 `pnpm tauri dev` 验证。以下点尤其需要确认：
 
-- rrweb `Replayer` 在平铺 tile 内的缩放/尺寸是否正常。
-- `pause(offset)` 是否真正 seek（rrweb 2.x 无 `goto`，seek 依赖 `pause(offset)`/`play(offset)`）。
-- 各 segment `Replayer` 独立 RAF 的漂移程度。
+- rrweb `Replayer` 在槽位（尤其 spotlight 主区放大时）的缩放/尺寸是否正常——当前用 `width/height:100%` 撑 wrapper，可能拉伸/溢出，未做等比 `transform: scale()`（见 TODO 方案 E）。
+- 漂移纠偏的实际收敛效果、`play(offset)` 在长事件流上 re-seek 的延迟。
+- spotlight 主槽/侧槽 CSS 切换（`grid-row:1/-1` + 显式行数）的实际布局、主窗口自动跟踪与手动切换。
+- 时间轴色带/焦点标记的渲染与点击 seek。
 - 录制中关闭子窗口的拦截时序、`emit_to` 定向事件是否被目标窗口稳定接收。
 
 ### 已知 MVP 限制
 
-- 回放各 segment 各自跑 RAF，长录制可能轻微漂移。
-- 平铺布局为 `auto-fit` 网格，未还原原始窗口位置/尺寸。
+- 回放各 segment 仍各自跑独立 RAF，靠 120ms 阈值纠偏拉回（有界，非零漂移）；彻底零漂移需主时钟步进（方案 A，未做）。
+- 回放布局为稳定槽位 + spotlight，但**未还原原始窗口位置/尺寸**（方案 C，未做）；tile 内 rrweb 内容也未等比缩放（方案 E）。
 - 录制中关闭主窗口=直接退出，session.json 无 endedAt（不影响回放，但列表时长显示会以「现在」估算）。
 
 ## 未实现功能（TODO）
 
 按优先级粗略排序：
 
-1. **运行时测试与修 bug**——最高优先级，当前仅编译通过。先跑通基本流程（开始录制 -> 开关子窗口 -> 停止 -> 回放），再逐项修。
-2. **位置精确回放**：录制时记窗口 x/y/w/h，回放按包围盒缩放 fit 视口、按原位置摆放，还原多窗口空间关系。
-3. **无漂移同步**：用主 RAF 循环按帧 `goto` 驱动各 segment，取代各 Replayer 独立 `play`。
-4. **录制元信息编辑**：重命名、备注（需扩展 session.json 与列表 UI）。
-5. **导出**：会话导出为单个 `.json` 文件分享/导入。
-6. **console / 网络错误采集**：rrweb 的 `@rrweb/record` 插件，作为补充事件流。
-7. **seek 准确性验证**：确认 `pause(offset)` 行为，必要时改用 `play(offset)`+`pause()` 组合。
-8. **进度条精度与性能**：当前 50ms tick 更新 `currentTime`，长录制下可考虑节流。
+1. **运行时测试与修 bug**——最高优先级，当前仅编译通过。先跑通基本流程（开始录制 -> 开关子窗口 -> 停止 -> 回放），再验证 spotlight/色带/主窗口/漂移纠偏等新特性。
+2. **位置精确回放（方案 C）**：录制时记窗口 x/y/w/h（`outer_position`/`outer_size`），回放按包围盒缩放 fit 视口、按原位置摆放，还原多窗口空间关系。
+3. **无漂移同步（方案 A）**：主 RAF 循环每帧 `replayer.pause(offset)` 步进驱动各 segment，取代独立 `play`，彻底零漂移。当前已落地阈值纠偏（方案 B，120ms re-seek），A 为可选增强。
+4. **tile 等比缩放（方案 E）**：rrweb 原生 Replayer 按原始像素渲染，需 `transform: scale()` + `transform-origin:top left` 修正（含 spotlight 主区放大时）。
+5. **录制元信息编辑**：重命名、备注（需扩展 session.json 与列表 UI）。
+6. **导出**：会话导出为单个 `.json` 文件分享/导入。
+7. **console / 网络错误采集**：rrweb 的 `@rrweb/record` 插件，作为补充事件流。
+8. **进度条精度与性能**：当前 50ms tick 更新 `currentTime`，长录制下可考虑节流或换 `requestAnimationFrame`。
 
 未来可选：音频录制、屏幕流（超出 rrweb DOM 录制范畴，需额外方案）。
 

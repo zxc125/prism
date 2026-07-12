@@ -23,6 +23,29 @@ function onSlider(v: number | number[]) {
   player.seek(ms);
 }
 
+const palette = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399', '#9b59b6', '#1abc9c'];
+
+function pct(ms: number) {
+  const total = player.totalTime.value;
+  return total > 0 ? (ms / total) * 100 : 0;
+}
+
+function bandStyle(b: { labelIdx: number; start: number; end: number }) {
+  return {
+    left: `${pct(b.start)}%`,
+    width: `${Math.max(0, pct(b.end - b.start))}%`,
+    top: `${b.labelIdx * 8}px`,
+    background: palette[b.labelIdx % palette.length],
+  };
+}
+
+function onOverviewClick(e: MouseEvent) {
+  const el = e.currentTarget as HTMLElement;
+  const rect = el.getBoundingClientRect();
+  const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+  player.seek(ratio * player.totalTime.value);
+}
+
 onMounted(async () => {
   try {
     await player.load();
@@ -55,15 +78,40 @@ onBeforeUnmount(() => player.destroy());
             {{ player.playing.value ? "暂停" : "播放" }}
           </el-button>
 
-          <el-slider
-            class="slider"
-            :min="0"
-            :max="player.totalTime.value"
-            :model-value="player.currentTime.value"
-            :step="100"
-            :format-tooltip="fmt"
-            @input="onSlider"
-          />
+          <div class="timeline-col">
+            <div
+              class="timeline-overview"
+              :style="{ height: (player.timeline.value.labels.length * 8 + 4) + 'px' }"
+              @click="onOverviewClick"
+            >
+              <div
+                v-for="(b, i) in player.timeline.value.bands"
+                :key="'b' + i"
+                class="tl-band"
+                :style="bandStyle(b)"
+              />
+              <div
+                v-for="(t, i) in player.timeline.value.focusMarks"
+                :key="'f' + i"
+                class="tl-focus"
+                :style="{ left: pct(t) + '%' }"
+              />
+              <div
+                class="tl-playhead"
+                :style="{ left: pct(player.currentTime.value) + '%' }"
+              />
+            </div>
+
+            <el-slider
+              class="slider"
+              :min="0"
+              :max="player.totalTime.value"
+              :model-value="player.currentTime.value"
+              :step="100"
+              :format-tooltip="fmt"
+              @input="onSlider"
+            />
+          </div>
 
           <span class="time">
             {{ fmt(player.currentTime.value) }} / {{ fmt(player.totalTime.value) }}
@@ -81,6 +129,18 @@ onBeforeUnmount(() => player.destroy());
               :value="s"
             />
           </el-select>
+
+          <el-divider direction="vertical" />
+
+          <el-switch
+            :model-value="player.autoFollow.value"
+            active-text="跟随焦点"
+            @update:model-value="(v) => player.setAutoFollow(v as boolean)"
+          />
+
+          <span class="main-label">
+            主窗口: {{ player.mainLabel.value ?? "-" }}
+          </span>
         </div>
       </template>
     </el-card>
@@ -89,14 +149,11 @@ onBeforeUnmount(() => player.destroy());
 
 <style scoped>
 .page {
-  display: flex;
-  justify-content: center;
   padding: 16px;
 }
 
 .box {
   width: 100%;
-  max-width: 920px;
 }
 
 h2 {
@@ -109,7 +166,6 @@ h2 {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 8px;
   min-height: 420px;
   background: var(--el-fill-color-light);
@@ -117,7 +173,16 @@ h2 {
   border-radius: 4px;
 }
 
-.tile {
+.tile-slot.is-main {
+  grid-column: 1;
+  grid-row: 1 / -1;
+}
+
+.tile-slot:not(.is-main) {
+  grid-column: 2;
+}
+
+.tile-slot {
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -127,11 +192,38 @@ h2 {
   min-height: 200px;
 }
 
+.tile-slot.is-empty {
+  background: var(--el-fill-color-light);
+}
+
 .tile-header {
   padding: 4px 8px;
   font-size: 12px;
   background: var(--el-color-primary-light-9);
   border-bottom: 1px solid var(--el-border-color);
+  cursor: pointer;
+}
+
+.tile-slot.is-main .tile-header {
+  background: var(--el-color-primary-light-8);
+}
+
+.tile-slot.is-main .tile-header::before {
+  content: "★ ";
+  color: var(--el-color-warning);
+}
+
+.tile-placeholder {
+  display: none;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.tile-slot.is-empty .tile-placeholder {
+  display: flex;
 }
 
 .tile-root {
@@ -151,11 +243,60 @@ h2 {
   margin-top: 12px;
 }
 
-.slider {
+.timeline-col {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.timeline-overview {
+  position: relative;
+  background: var(--el-fill-color-light);
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.tl-band {
+  position: absolute;
+  height: 6px;
+  border-radius: 2px;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.tl-focus {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--el-color-warning);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.tl-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--el-color-primary);
+  pointer-events: none;
+}
+
+.slider {
+  width: 100%;
 }
 
 .time {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+}
+
+.main-label {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   white-space: nowrap;

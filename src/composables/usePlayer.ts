@@ -32,6 +32,17 @@ type TimelineBand = { labelIdx: number; start: number; end: number };
 // 各 Replayer 独立 RAF 与主时钟的允许漂移，超过则强制 re-seek 对齐，防止长录制漂移
 const DRIFT_THRESHOLD = 120; // ms
 
+// 窗口轨道色板：filmic、在深色面上可辨；供时间轴色带与回放磁贴头共用
+export const LANE_COLORS = [
+  "#E8A33D",
+  "#C75B5B",
+  "#5BC0BE",
+  "#B084CC",
+  "#8AB36A",
+  "#D98E50",
+  "#6FA8DC",
+];
+
 /**
  * 回放一个录制会话：按 windows.jsonl 的 shown/hidden 区间，
  * 在主时间轴上驱动各 segment 的 Replayer；每个 label 占一个稳定槽位，
@@ -137,6 +148,10 @@ export function usePlayer(sessionId: string) {
       const slot = document.createElement("div");
       slot.className = "tile-slot";
       slot.dataset.label = label;
+      slot.style.setProperty(
+        "--lane-color",
+        LANE_COLORS[labelOrder.indexOf(label) % LANE_COLORS.length],
+      );
 
       const header = document.createElement("div");
       header.className = "tile-header";

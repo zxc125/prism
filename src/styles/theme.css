@@ -1,0 +1,335 @@
+/* ============================================================
+   replay · session studio — design system
+   A warm-dark "cutting room" control surface for session replay.
+   Palette + type are tuned to the recording / timecode vernacular:
+   monospace timecodes, oscilloscope-amber accent, oxblood REC.
+   ============================================================ */
+
+:root {
+  /* --- palette: warm cutting-room --- */
+  --ink:        #14110D;  /* page floor */
+  --ink-2:      #181410;  /* sunken header */
+  --slate:      #1F1B16;  /* panel surface */
+  --slate-2:    #2A251E;  /* lifted surface / hover */
+  --slate-3:    #342D24;  /* active / pressed */
+  --hair:       #3A332A;  /* hairline border */
+  --hair-soft:  #2A241D;
+  --bone:       #E8E2D4;  /* primary text / leader film */
+  --bone-dim:   #B8B0A2;  /* regular text */
+  --ash:        #8A8378;  /* secondary text / captions */
+  --ash-deep:   #6A6358;  /* placeholder */
+  --amber:      #E8A33D;  /* primary accent: playhead / active */
+  --amber-soft: #F0B85B;  /* hover lift */
+  --amber-deep: #A07029;
+  --amber-tint: #2A2113;  /* subtle amber bg (dark tint) */
+  --oxblood:    #B5383A;  /* REC / danger */
+  --oxblood-soft:#D05858; /* danger readable on dark */
+
+  /* lane palette: filmic, distinguishable on dark */
+  --lane-1: #E8A33D;
+  --lane-2: #C75B5B;
+  --lane-3: #5BC0BE;
+  --lane-4: #B084CC;
+  --lane-5: #8AB36A;
+  --lane-6: #D98E50;
+  --lane-7: #6FA8DC;
+
+  /* --- type --- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", "Fira Code",
+    Menlo, Consolas, "Liberation Mono", monospace;
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 14px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+  --fs-2xl: 30px;
+
+  --radius: 4px;
+  --radius-sm: 3px;
+}
+
+/* ---- Element Plus token overrides (dark control surface) ----
+   :root:root doubles specificity so these win over EP's bundled
+   :root vars regardless of stylesheet load order. */
+:root:root {
+  color-scheme: dark;
+
+  /* primary = amber, with a dark-tinted light ramp (mixed toward the
+     surface, not toward white) so subtle backgrounds read on dark. */
+  --el-color-primary: #E8A33D;
+  --el-color-primary-light-3: #C98A2E;
+  --el-color-primary-light-5: #A07029;
+  --el-color-primary-light-7: #6E4D1C;
+  --el-color-primary-light-8: #4A3414;
+  --el-color-primary-light-9: #2A2113;
+  --el-color-primary-dark-2: #F0B85B;
+
+  --el-color-success: #8AB36A;
+  --el-color-success-light-3: #6E9455;
+  --el-color-success-light-5: #547040;
+  --el-color-success-light-7: #3A4D2C;
+  --el-color-success-light-8: #2A3820;
+  --el-color-success-light-9: #1E2A17;
+  --el-color-success-dark-2: #A3C788;
+
+  --el-color-warning: #E8A33D;
+  --el-color-warning-light-3: #C98A2E;
+  --el-color-warning-light-5: #A07029;
+  --el-color-warning-light-7: #6E4D1C;
+  --el-color-warning-light-8: #4A3414;
+  --el-color-warning-light-9: #2A2113;
+  --el-color-warning-dark-2: #F0B85B;
+
+  --el-color-danger: #D05858;
+  --el-color-danger-light-3: #B5383A;
+  --el-color-danger-light-5: #8A2D2F;
+  --el-color-danger-light-7: #5E2222;
+  --el-color-danger-light-8: #451C1C;
+  --el-color-danger-light-9: #2E1818;
+  --el-color-danger-dark-2: #E07878;
+
+  --el-color-error: #D05858;
+  --el-color-error-light-3: #B5383A;
+  --el-color-error-light-5: #8A2D2F;
+  --el-color-error-light-7: #5E2222;
+  --el-color-error-light-8: #451C1C;
+  --el-color-error-light-9: #2E1818;
+  --el-color-error-dark-2: #E07878;
+
+  --el-color-info: #8A8378;
+  --el-color-info-light-3: #6E685E;
+  --el-color-info-light-5: #524D45;
+  --el-color-info-light-7: #383530;
+  --el-color-info-light-8: #2A2723;
+  --el-color-info-light-9: #1F1D1A;
+  --el-color-info-dark-2: #A39C90;
+
+  /* surfaces */
+  --el-bg-color: var(--slate);
+  --el-bg-color-page: var(--ink);
+  --el-bg-color-overlay: var(--slate-2);
+  --el-fill-color: var(--slate-2);
+  --el-fill-color-light: var(--hair-soft);
+  --el-fill-color-lighter: #241F19;
+  --el-fill-color-extra-light: #1A1611;
+  --el-fill-color-blank: var(--slate);
+  --el-fill-color-dark: var(--slate-3);
+  --el-fill-color-darker: var(--slate-3);
+
+  /* text */
+  --el-text-color-primary: var(--bone);
+  --el-text-color-regular: var(--bone-dim);
+  --el-text-color-secondary: var(--ash);
+  --el-text-color-placeholder: var(--ash-deep);
+  --el-text-color-disabled: #4A443C;
+
+  /* borders */
+  --el-border-color: var(--hair);
+  --el-border-color-light: var(--hair-soft);
+  --el-border-color-lighter: #2A241D;
+  --el-border-color-extra-light: #241F19;
+  --el-border-color-dark: #4A4138;
+  --el-border-color-darker: var(--hair);
+
+  /* shadows / masks */
+  --el-box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --el-box-shadow-light: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --el-mask-color: rgba(20, 17, 13, 0.72);
+  --el-disabled-bg-color: var(--slate-2);
+  --el-disabled-text-color: #4A443C;
+  --el-disabled-border-color: var(--hair-soft);
+
+  /* table */
+  --el-table-bg-color: var(--slate);
+  --el-table-tr-bg-color: var(--slate);
+  --el-table-row-hover-bg-color: var(--slate-2);
+  --el-table-header-bg-color: var(--ink-2);
+  --el-table-header-text-color: var(--ash);
+  --el-table-text-color: var(--bone);
+  --el-table-border-color: var(--hair-soft);
+  --el-table-border: 1px solid var(--hair-soft);
+
+  /* slider */
+  --el-slider-main-bg-color: var(--amber);
+  --el-slider-runway-bg-color: var(--hair-soft);
+  --el-slider-button-size: 14px;
+  --el-slider-height: 4px;
+
+  /* floating layers */
+  --el-message-bg-color: var(--slate-2);
+  --el-message-border-color: var(--hair);
+  --el-message-text-color: var(--bone);
+  --el-messagebox-bg-color: var(--slate);
+  --el-messagebox-border-color: var(--hair);
+  --el-messagebox-title-color: var(--bone);
+  --el-messagebox-content-color: var(--bone-dim);
+  --el-tooltip-bg-color: var(--slate-3);
+  --el-tooltip-text-color: var(--bone);
+  --el-tooltip-border-color: var(--hair);
+  --el-popper-border-color: var(--hair);
+}
+
+/* ---- base ---- */
+* { box-sizing: border-box; }
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100vh;
+}
+
+body {
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* monospace voice — timecodes, data, lane labels */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* eyebrow — control-surface section marker */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ash);
+}
+
+/* keyboard focus */
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hair) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--hair);
+  border-radius: 6px;
+  border: 2px solid var(--ink);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--ash-deep); }
+
+::selection { background: var(--amber); color: var(--ink); }
+
+/* ---- Element Plus component nudges ---- */
+.el-button {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  border-radius: var(--radius);
+}
+/* light accents need dark ink text for contrast */
+.el-button--primary,
+.el-button--success,
+.el-button--warning {
+  --el-button-text-color: var(--ink);
+  --el-button-hover-text-color: var(--ink);
+  --el-button-active-text-color: var(--ink);
+  --el-button-bg-color: var(--amber);
+  --el-button-border-color: var(--amber);
+  --el-button-hover-bg-color: var(--amber-soft);
+  --el-button-hover-border-color: var(--amber-soft);
+  --el-button-active-bg-color: var(--amber-deep);
+  --el-button-active-border-color: var(--amber-deep);
+  color: var(--ink);
+  font-weight: 600;
+}
+.el-button--danger {
+  --el-button-text-color: #fff;
+  --el-button-hover-text-color: #fff;
+  --el-button-active-text-color: #fff;
+}
+.el-button--default {
+  --el-button-text-color: var(--bone-dim);
+  --el-button-hover-text-color: var(--bone);
+  --el-button-bg-color: transparent;
+  --el-button-border-color: var(--hair);
+  --el-button-hover-bg-color: var(--slate-2);
+  --el-button-hover-border-color: var(--ash-deep);
+}
+.el-button.is-text { color: var(--ash); }
+.el-button.is-text:hover { color: var(--bone); background: var(--slate-2); }
+
+/* table — dense log readout */
+.el-table {
+  font-size: var(--fs-sm);
+  --el-table-header-font-weight: 500;
+}
+.el-table th.el-table__cell {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  background: var(--ink-2) !important;
+}
+.el-table .cell { padding-left: 12px; padding-right: 12px; }
+
+/* slider — slim, amber */
+.el-slider__runway { height: var(--el-slider-height); }
+.el-slider__bar { height: var(--el-slider-height); }
+.el-slider__button {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--amber);
+  background: var(--ink);
+}
+
+/* switch / select / input / form */
+.el-switch.is-checked .el-switch__core {
+  border-color: var(--amber);
+  background-color: var(--amber);
+}
+.el-select__wrapper {
+  background: var(--slate);
+  box-shadow: 0 0 0 1px var(--hair) inset;
+}
+.el-select__wrapper.is-hovering { box-shadow: 0 0 0 1px var(--ash-deep) inset; }
+.el-select__wrapper.is-focused { box-shadow: 0 0 0 1px var(--amber) inset; }
+.el-form-item__label { color: var(--ash); font-size: var(--fs-sm); }
+.el-input__wrapper {
+  background: var(--slate);
+  box-shadow: 0 0 0 1px var(--hair) inset;
+}
+.el-input__wrapper.is-focus { box-shadow: 0 0 0 1px var(--amber) inset; }
+
+.el-divider { border-color: var(--hair-soft); }
+.el-divider--vertical { border-left-color: var(--hair); }
+
+.el-card {
+  background: var(--slate);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+}
+.el-message { border-width: 1px; }
+
+/* respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -228,95 +228,9 @@ onBeforeUnmount(() => player.destroy());
   padding: 12px;
   background: var(--ink);
 }
-.tile-slot.is-main {
-  grid-column: 1;
-  grid-row: 1 / -1;
-}
-.tile-slot:not(.is-main) {
-  grid-column: 2;
-}
-.tile-slot {
-  display: flex;
-  flex-direction: column;
-  background: var(--slate);
-  border: 1px solid var(--hair);
-  border-radius: var(--radius);
-  overflow: hidden;
-  min-height: 0;
-}
-.tile-slot.is-main {
-  border-color: var(--amber);
-  box-shadow: 0 0 0 1px var(--amber-deep) inset,
-    0 0 28px rgba(232, 163, 61, 0.08);
-}
-.tile-slot.is-empty {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--slate) 0 10px,
-    #1b1712 10px 20px
-  );
-  border-style: dashed;
-  border-color: var(--hair-soft);
-}
-.tile-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  font-size: var(--fs-xs);
-  font-family: var(--font-mono);
-  letter-spacing: 0.06em;
-  color: var(--bone-dim);
-  background: var(--slate-2);
-  border-bottom: 1px solid var(--hair);
-  cursor: pointer;
-  user-select: none;
-}
-.tile-header::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--lane-color, var(--ash));
-  flex-shrink: 0;
-}
-.tile-slot.is-main .tile-header {
-  color: var(--bone);
-  background: var(--amber-tint);
-}
-.tile-slot.is-main .tile-header::after {
-  content: "主";
-  margin-left: auto;
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  color: var(--ink);
-  background: var(--amber);
-  padding: 1px 6px;
-  border-radius: 2px;
-  font-weight: 600;
-}
-.tile-placeholder {
-  display: none;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  color: var(--ash-deep);
-  font-size: var(--fs-xs);
-  font-family: var(--font-mono);
-  letter-spacing: 0.1em;
-}
-.tile-slot.is-empty .tile-placeholder {
-  display: flex;
-}
-.tile-root {
-  flex: 1;
-  overflow: hidden;
-  background: #fff;
-}
-.tile-root :deep(.replayer-wrapper) {
-  width: 100%;
-  height: 100%;
-}
+/* tile-slot / tile-header / tile-root / tile-placeholder 由 usePlayer 用
+   document.createElement 动态创建，不带 scoped 的 data-v 属性，scoped 选择器
+   不命中。样式见文件末尾的非 scoped 块（以 .grid 限定作用域）。*/
 
 /* ---- transport ---- */
 .transport {
@@ -443,4 +357,96 @@ onBeforeUnmount(() => player.destroy());
 .follow:hover {
   color: var(--bone-dim);
 }
+</style>
+
+<style>
+/* tile 元素由 usePlayer 用 document.createElement 动态创建，不带 scoped 的
+   data-v 属性，故这些规则放在非 scoped 块里；以 .grid 限定作用域避免泄漏。
+   min-width:0 + minmax(0,...) 列模板防止 rrweb 原始宽度撑爆网格列。 */
+.grid .tile-slot {
+  display: flex;
+  flex-direction: column;
+  background: var(--slate);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+.grid .tile-slot.is-main {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  border-color: var(--amber);
+  box-shadow: 0 0 0 1px var(--amber-deep) inset,
+    0 0 28px rgba(232, 163, 61, 0.08);
+}
+.grid .tile-slot:not(.is-main) {
+  grid-column: 2;
+}
+.grid .tile-slot.is-empty {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--slate) 0 10px,
+    #1b1712 10px 20px
+  );
+  border-style: dashed;
+  border-color: var(--hair-soft);
+}
+.grid .tile-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--bone-dim);
+  background: var(--slate-2);
+  border-bottom: 1px solid var(--hair);
+  cursor: pointer;
+  user-select: none;
+}
+.grid .tile-header::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lane-color, var(--ash));
+  flex-shrink: 0;
+}
+.grid .tile-slot.is-main .tile-header {
+  color: var(--bone);
+  background: var(--amber-tint);
+}
+.grid .tile-slot.is-main .tile-header::after {
+  content: "主";
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+  background: var(--amber);
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+.grid .tile-placeholder {
+  display: none;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: var(--ash-deep);
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  letter-spacing: 0.1em;
+}
+.grid .tile-slot.is-empty .tile-placeholder {
+  display: flex;
+}
+.grid .tile-root {
+  flex: 1;
+  overflow: hidden;
+  background: #fff;
+}
+/* .replayer-wrapper 的 width/height/transform 由 usePlayer.fitSegment 按录制
+   视口尺寸等比缩放设置，此处不覆写。 */
 </style>

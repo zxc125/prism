@@ -25,6 +25,8 @@ type SegmentInfo = {
   hiddenAt: number | null; // null = 持续到会话结束
   replayer: Replayer | null;
   container: HTMLDivElement | null;
+  origW: number; // 录制时视口宽（Meta 事件），用于等比缩放
+  origH: number;
 };
 
 type TimelineBand = { labelIdx: number; start: number; end: number };
@@ -62,6 +64,7 @@ export function usePlayer(sessionId: string) {
   let gridEl: HTMLElement | null = null;
   let tickTimer: number | null = null;
   let lastTick = 0;
+  let ro: ResizeObserver | null = null; // 监听 tile-root 尺寸变化，重算等比缩放
   let active = new Set<string>();
   // distinct label 按首次 shown 顺序：稳定槽位索引 + 主窗口兜底
   let labelOrder: string[] = [];
@@ -93,6 +96,11 @@ export function usePlayer(sessionId: string) {
       const hidden = data.windows.find(
         (w) => w.type === "hidden" && w.segmentId === segmentId,
       );
+      // Meta 事件（type 4）携带录制时视口宽高，供回放等比缩放
+      const meta = events.find((e) => e.type === 4);
+      const md = meta?.data as unknown as
+        | { width?: number; height?: number }
+        | undefined;
       segs.push({
         segmentId,
         label: shown?.label ?? segmentId,
@@ -103,6 +111,8 @@ export function usePlayer(sessionId: string) {
         hiddenAt: hidden?.t ?? null,
         replayer: null,
         container: null,
+        origW: md?.width ?? 0,
+        origH: md?.height ?? 0,
       });
     }
     // 按首次 shown 时间排序，使 label 首现顺序 = 显示顺序（稳定槽位索引）
@@ -186,6 +196,16 @@ export function usePlayer(sessionId: string) {
       seg.replayer.pause(0);
     }
     syncVisibility(startTs + currentTime.value);
+
+    // 监听各 tile-root 尺寸变化（spotlight 切主、窗口缩放、段显隐）重算缩放
+    ro?.disconnect();
+    ro = new ResizeObserver(() => fitAll());
+    for (const seg of segs) {
+      if (seg.container) ro.observe(seg.container);
+    }
+    fitAll();
+    // 兜底：rrweb wrapper 若在下一帧才就绪，再 fit 一次
+    requestAnimationFrame(() => fitAll());
   }
 
   function activeAt(absT: number): SegmentInfo[] {
@@ -254,13 +274,45 @@ export function usePlayer(sessionId: string) {
     }
     if (sideCount !== lastSideCount) {
       if (sideCount === 0) {
-        gridEl.style.gridTemplateColumns = "1fr";
-        gridEl.style.gridTemplateRows = "1fr";
+        gridEl.style.gridTemplateColumns = "minmax(0, 1fr)";
+        gridEl.style.gridTemplateRows = "minmax(0, 1fr)";
       } else {
-        gridEl.style.gridTemplateColumns = "2fr 1fr";
-        gridEl.style.gridTemplateRows = `repeat(${sideCount}, minmax(120px, 1fr))`;
+        gridEl.style.gridTemplateColumns = "minmax(0, 2fr) minmax(0, 1fr)";
+        gridEl.style.gridTemplateRows = `repeat(${sideCount}, minmax(0, 1fr))`;
       }
       lastSideCount = sideCount;
+    }
+  }
+
+  /**
+   * 等比缩放：rrweb Replayer 按录制时原始像素渲染，需把 .replayer-wrapper
+   * 固定为原始尺寸，再 transform: scale() fit-contain 到 tile-root，并居中。
+   * spotlight 主区放大/窗口尺寸变化时由 ResizeObserver 触发重算。
+   */
+  function fitSegment(seg: SegmentInfo) {
+    const root = seg.container;
+    if (!root || !seg.origW || !seg.origH) return;
+    const rw = root.clientWidth;
+    const rh = root.clientHeight;
+    if (!rw || !rh) return; // display:none 或未布局
+    const s = Math.min(rw / seg.origW, rh / seg.origH);
+    const sw = seg.origW * s;
+    const sh = seg.origH * s;
+    const ox = (rw - sw) / 2;
+    const oy = (rh - sh) / 2;
+    const wrapper = root.querySelector<HTMLElement>(".replayer-wrapper");
+    if (!wrapper) return;
+    wrapper.style.width = `${seg.origW}px`;
+    wrapper.style.height = `${seg.origH}px`;
+    wrapper.style.transformOrigin = "top left";
+    wrapper.style.transform = `translate(${ox}px, ${oy}px) scale(${s})`;
+  }
+
+  function fitAll() {
+    for (const seg of segs) {
+      if (seg.container && seg.container.style.display !== "none") {
+        fitSegment(seg);
+      }
     }
   }
 
@@ -355,6 +407,8 @@ export function usePlayer(sessionId: string) {
 
   function destroy() {
     pause();
+    ro?.disconnect();
+    ro = null;
     for (const seg of segs) {
       seg.replayer?.destroy();
     }

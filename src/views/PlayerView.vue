@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import "rrweb/dist/style.css";
 import { useRoute } from "vue-router";
-import { usePlayer, LANE_COLORS } from "../composables/usePlayer";
+import { usePlayer, LANE_COLORS, type Signal } from "../composables/usePlayer";
 
 const route = useRoute();
 const id = route.params.id as string;
@@ -11,12 +11,38 @@ const player = usePlayer(id);
 
 const speeds = [0.5, 1, 2, 4];
 
+const diagOpen = ref(true);
+const signalFilter = ref<"all" | "console" | "network" | "error">("all");
+
+const filterOptions = [
+  { key: "all", label: "全部" },
+  { key: "console", label: "console" },
+  { key: "network", label: "network" },
+  { key: "error", label: "error" },
+] as const;
+
+const SIG_COLOR: Record<Signal["plugin"], string> = {
+  console: "var(--sig-log)",
+  network: "var(--sig-net)",
+  error: "var(--sig-err)",
+};
+
+const streamRef = ref<HTMLElement>();
+
 function fmt(ms: number) {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
   const r = s % 60;
   const p = (n: number) => n.toString().padStart(2, "0");
   return `${p(m)}:${p(r)}`;
+}
+
+// 信号时间码：相对会话起点 +MM:SS.mmm
+function sigTimecode(ms: number) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const p = (n: number, l = 2) => n.toString().padStart(l, "0");
+  return `+${p(m)}:${p(s % 60)}.${p(ms % 1000, 3)}`;
 }
 
 function onSlider(v: number | number[]) {
@@ -47,6 +73,57 @@ function onOverviewClick(e: MouseEvent) {
   player.seek(ratio * player.totalTime.value);
 }
 
+const filteredSignals = computed(() =>
+  signalFilter.value === "all"
+    ? player.signals.value
+    : player.signals.value.filter((s) => s.plugin === signalFilter.value),
+);
+
+// 当前播放头对应的信号索引（最后一个 t <= currentTime），用于高亮 + 自动滚动
+const activeSigIdx = computed(() => {
+  const t = player.currentTime.value;
+  let idx = -1;
+  for (let i = 0; i < filteredSignals.value.length; i++) {
+    if (filteredSignals.value[i].t <= t) idx = i;
+    else break;
+  }
+  return idx;
+});
+
+function sigTag(s: Signal): string {
+  if (s.plugin === "console") return s.payload.level;
+  if (s.plugin === "network") return s.payload.kind;
+  return s.payload.kind;
+}
+function formatArg(a: unknown): string {
+  if (a === null) return "null";
+  if (typeof a === "object") {
+    try {
+      return JSON.stringify(a);
+    } catch {
+      return String(a);
+    }
+  }
+  return String(a);
+}
+function sigText(s: Signal): string {
+  if (s.plugin === "console") return s.payload.args.map(formatArg).join(" ");
+  if (s.plugin === "network")
+    return `${s.payload.method} ${s.payload.url}  ${s.payload.status}  ${s.payload.duration}ms`;
+  return s.payload.message;
+}
+
+function onSignalClick(t: number) {
+  player.seek(t);
+}
+
+// 活跃信号行滚入视口
+watch(activeSigIdx, (idx) => {
+  if (idx < 0 || !streamRef.value) return;
+  const el = streamRef.value.querySelector<HTMLElement>(`[data-idx="${idx}"]`);
+  el?.scrollIntoView({ block: "nearest" });
+});
+
 onMounted(async () => {
   try {
     await player.load();
@@ -60,7 +137,7 @@ onBeforeUnmount(() => player.destroy());
 </script>
 
 <template>
-  <main class="player">
+  <main class="player" :class="{ 'diag-collapsed': !diagOpen }">
     <header class="bar">
       <div class="bar-id">
         <span class="eyebrow">回放</span>
@@ -70,13 +147,63 @@ onBeforeUnmount(() => player.destroy());
         <span>{{ player.timeline.value.labels.length }} 窗口</span>
         <span class="dot-sep">·</span>
         <span>{{ fmt(player.totalTime.value) }}</span>
+        <span v-if="player.errorMarks.value.length" class="dot-sep">·</span>
+        <span v-if="player.errorMarks.value.length" class="bar-err">
+          ⚠{{ player.errorMarks.value.length }}
+        </span>
       </div>
+      <button
+        class="bar-toggle mono"
+        :class="{ 'is-on': diagOpen }"
+        @click="diagOpen = !diagOpen"
+      >
+        诊断
+      </button>
     </header>
 
     <div v-if="!player.ready.value" v-loading="true" class="loading" />
 
     <template v-else>
-      <div ref="gridRef" class="grid" />
+      <div class="body">
+        <div ref="gridRef" class="grid" />
+
+        <aside class="diagnosis">
+          <header class="diag-head">
+            <span class="eyebrow">诊断 · signal</span>
+            <el-select
+              v-model="signalFilter"
+              size="small"
+              class="diag-filter"
+            >
+              <el-option
+                v-for="o in filterOptions"
+                :key="o.key"
+                :label="o.label"
+                :value="o.key"
+              />
+            </el-select>
+          </header>
+          <div ref="streamRef" class="signal-stream">
+            <div
+              v-for="(s, i) in filteredSignals"
+              :key="i"
+              :data-idx="i"
+              class="sig-row"
+              :class="{ 'is-active': i === activeSigIdx }"
+              @click="onSignalClick(s.t)"
+            >
+              <span class="sig-tc mono">{{ sigTimecode(s.t) }}</span>
+              <span
+                class="sig-tag mono"
+                :style="{ '--c': SIG_COLOR[s.plugin] }"
+                >{{ sigTag(s) }}</span
+              >
+              <span class="sig-text" :title="sigText(s)">{{ sigText(s) }}</span>
+            </div>
+            <div v-if="!filteredSignals.length" class="sig-empty">无信号</div>
+          </div>
+        </aside>
+      </div>
 
       <footer class="transport">
         <button
@@ -119,6 +246,12 @@ onBeforeUnmount(() => player.destroy());
               :key="'b' + i"
               class="tl-band"
               :style="bandStyle(b)"
+            />
+            <div
+              v-for="(t, i) in player.errorMarks.value"
+              :key="'e' + i"
+              class="tl-err"
+              :style="{ left: pct(t) + '%' }"
             />
             <div
               v-for="(t, i) in player.timeline.value.focusMarks"
@@ -189,7 +322,7 @@ onBeforeUnmount(() => player.destroy());
 .bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 16px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--hair);
   background: var(--slate);
@@ -210,27 +343,139 @@ onBeforeUnmount(() => player.destroy());
   gap: 8px;
   color: var(--ash);
   font-size: var(--fs-xs);
+  margin-left: auto;
+}
+.bar-err {
+  color: var(--oxblood-soft);
 }
 .dot-sep {
   color: var(--ash-deep);
+}
+.bar-toggle {
+  appearance: none;
+  border: 1px solid var(--hair);
+  background: transparent;
+  color: var(--ash);
+  font-size: var(--fs-xs);
+  padding: 4px 11px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.bar-toggle:hover {
+  color: var(--bone-dim);
+  border-color: var(--ash-deep);
+}
+.bar-toggle.is-on {
+  color: var(--ink);
+  background: var(--amber);
+  border-color: var(--amber);
 }
 
 .loading {
   flex: 1;
 }
 
-/* ---- tile grid (slots rendered by usePlayer) ---- */
-.grid {
+/* ---- body: replay grid + diagnosis rail ---- */
+.body {
   flex: 1;
   display: grid;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   min-height: 0;
+}
+.player.diag-collapsed .body {
+  grid-template-columns: minmax(0, 1fr);
+}
+.player.diag-collapsed .diagnosis {
+  display: none;
+}
+
+/* ---- tile grid (slots rendered by usePlayer) ---- */
+.grid {
+  min-height: 0;
+  display: grid;
+  gap: 8px;
   padding: 12px;
   background: var(--ink);
 }
 /* tile-slot / tile-header / tile-root / tile-placeholder 由 usePlayer 用
    document.createElement 动态创建，不带 scoped 的 data-v 属性，scoped 选择器
    不命中。样式见文件末尾的非 scoped 块（以 .grid 限定作用域）。*/
+
+/* ---- diagnosis rail ---- */
+.diagnosis {
+  border-left: 1px solid var(--hair);
+  background: var(--slate);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.diag-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hair);
+  background: var(--slate-2);
+}
+.diag-filter {
+  margin-left: auto;
+  width: 110px;
+}
+.signal-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.sig-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.12s;
+}
+.sig-row:hover {
+  background: var(--slate-2);
+}
+.sig-row.is-active {
+  background: var(--amber-tint);
+  border-left-color: var(--amber);
+}
+.sig-tc {
+  font-size: var(--fs-xs);
+  color: var(--ash);
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+.sig-tag {
+  font-size: 10px;
+  color: var(--c);
+  flex-shrink: 0;
+  padding-top: 1px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  min-width: 44px;
+}
+.sig-text {
+  font-size: var(--fs-xs);
+  color: var(--bone-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sig-row.is-active .sig-text {
+  color: var(--bone);
+}
+.sig-empty {
+  color: var(--ash-deep);
+  font-size: var(--fs-xs);
+  padding: 24px;
+  text-align: center;
+}
 
 /* ---- transport ---- */
 .transport {
@@ -286,6 +531,16 @@ onBeforeUnmount(() => player.destroy());
   border-radius: 2px;
   opacity: 0.9;
   pointer-events: none;
+}
+.tl-err {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--oxblood-soft);
+  opacity: 0.9;
+  pointer-events: none;
+  transform: translateX(-1px);
 }
 .tl-focus {
   position: absolute;

@@ -1,6 +1,6 @@
 import { Replayer, type eventWithTime } from "rrweb";
 import { invoke } from "@tauri-apps/api/core";
-import { ref } from "vue";
+import { ref, computed } from "vue";
 
 type RREvent = eventWithTime;
 type WindowEvt = {
@@ -30,6 +30,48 @@ type SegmentInfo = {
 };
 
 type TimelineBand = { labelIdx: number; start: number; end: number };
+
+// 诊断信号（交错事件模型 type:6 的回放侧投影）
+export type Signal =
+  | { t: number; plugin: "error"; payload: { message: string; stack?: string; kind: string } }
+  | { t: number; plugin: "console"; payload: { level: string; args: unknown[] } }
+  | { t: number; plugin: "network"; payload: { url: string; method: string; status: number; duration: number; kind: string } };
+
+/**
+ * 生成 mock 诊断信号（严格按 type:6 信封，P2 落地后替换为真实事件）。
+ * 按会话总时长的百分比铺点，使短/长录制都能看到分布。
+ */
+function genMockSignals(total: number): Signal[] {
+  if (total <= 0) return [];
+  const at = (pct: number) => Math.round(pct * total);
+  const sigs: Signal[] = [
+    { t: at(0.05), plugin: "console", payload: { level: "log", args: ["App ready", { version: "1.2.0" }] } },
+    { t: at(0.12), plugin: "network", payload: { url: "/api/session", method: "GET", status: 200, duration: 84, kind: "fetch" } },
+    { t: at(0.2), plugin: "console", payload: { level: "info", args: ["子窗口已显示: settings"] } },
+    { t: at(0.28), plugin: "network", payload: { url: "/api/user/profile", method: "GET", status: 200, duration: 132, kind: "fetch" } },
+    { t: at(0.35), plugin: "console", payload: { level: "warn", args: ["慢渲染: 38ms"] } },
+    { t: at(0.42), plugin: "network", payload: { url: "/api/data", method: "POST", status: 500, duration: 410, kind: "fetch" } },
+    {
+      t: at(0.43),
+      plugin: "error",
+      payload: {
+        message: "TypeError: Cannot read properties of undefined (reading 'map')",
+        stack: "    at renderList (List.vue:42)\n    at update (App.vue:88)",
+        kind: "onerror",
+      },
+    },
+    { t: at(0.55), plugin: "console", payload: { level: "error", args: ["渲染失败"] } },
+    { t: at(0.62), plugin: "console", payload: { level: "log", args: ["重试第 1 次"] } },
+    { t: at(0.7), plugin: "network", payload: { url: "/api/data", method: "POST", status: 200, duration: 156, kind: "fetch" } },
+    { t: at(0.78), plugin: "console", payload: { level: "log", args: ["已恢复"] } },
+    {
+      t: at(0.88),
+      plugin: "error",
+      payload: { message: "Unhandled rejection: 网络超时", stack: "    at fetchRetry (api.ts:21)", kind: "unhandledrejection" },
+    },
+  ];
+  return sigs.sort((a, b) => a.t - b.t);
+}
 
 // 各 Replayer 独立 RAF 与主时钟的允许漂移，超过则强制 re-seek 对齐，防止长录制漂移
 const DRIFT_THRESHOLD = 120; // ms
@@ -83,6 +125,12 @@ export function usePlayer(sessionId: string) {
     bands: TimelineBand[];
     focusMarks: number[];
   }>({ labels: [], bands: [], focusMarks: [] });
+
+  // 诊断信号流（P1: mock；P2: 从 type:6 事件取）
+  const signals = ref<Signal[]>([]);
+  const errorMarks = computed(() =>
+    signals.value.filter((s) => s.plugin === "error").map((s) => s.t),
+  );
 
   async function load() {
     const data = await invoke<SessionData>("read_session", { id: sessionId });
@@ -149,6 +197,7 @@ export function usePlayer(sessionId: string) {
       .map((f) => f.t - startTs)
       .filter((t) => t >= 0 && t <= totalTime.value);
     timeline.value = { labels: labelOrder.slice(), bands, focusMarks };
+    signals.value = genMockSignals(totalTime.value);
     ready.value = true;
   }
 
@@ -421,6 +470,7 @@ export function usePlayer(sessionId: string) {
     lastMain = null;
     lastSideCount = -1;
     timeline.value = { labels: [], bands: [], focusMarks: [] };
+    signals.value = [];
   }
 
   return {
@@ -432,6 +482,8 @@ export function usePlayer(sessionId: string) {
     mainLabel,
     autoFollow,
     timeline,
+    signals,
+    errorMarks,
     load,
     attachGrid,
     play,

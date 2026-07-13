@@ -1,5 +1,5 @@
 /* ============================================================
-   replay · session studio — design system
+   replay · session studio - design system
    A warm-dark "cutting room" control surface for session replay.
    Palette + type are tuned to the recording / timecode vernacular:
    monospace timecodes, oscilloscope-amber accent, oxblood REC.
@@ -33,6 +33,17 @@
   --lane-5: #8AB36A;
   --lane-6: #D98E50;
   --lane-7: #6FA8DC;
+
+  /* --- 来源色（平台观测：复用 lane 调色板，每来源稳定身份色） --- */
+  --src-self:  var(--amber);   /* 本机自录 */
+  --src-web:   #6FA8DC;        /* = --lane-7 */
+  --src-tauri: #8AB36A;        /* = --lane-5 */
+
+  /* --- 诊断信号类型色 --- */
+  --sig-log: var(--ash);         /* console.log/info/debug */
+  --sig-warn: var(--amber);      /* console.warn */
+  --sig-err: var(--oxblood-soft);/* console.error / error 事件 */
+  --sig-net: #6FA8DC;            /* network */
 
   /* --- type --- */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
@@ -193,14 +204,14 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* monospace voice — timecodes, data, lane labels */
+/* monospace voice - timecodes, data, lane labels */
 .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
 
-/* eyebrow — control-surface section marker */
+/* eyebrow - control-surface section marker */
 .eyebrow {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
@@ -270,7 +281,7 @@ body {
 .el-button.is-text { color: var(--ash); }
 .el-button.is-text:hover { color: var(--bone); background: var(--slate-2); }
 
-/* table — dense log readout */
+/* table - dense log readout */
 .el-table {
   font-size: var(--fs-sm);
   --el-table-header-font-weight: 500;
@@ -285,7 +296,7 @@ body {
 }
 .el-table .cell { padding-left: 12px; padding-right: 12px; }
 
-/* slider — slim, amber */
+/* slider - slim, amber */
 .el-slider__runway { height: var(--el-slider-height); }
 .el-slider__bar { height: var(--el-slider-height); }
 .el-slider__button {

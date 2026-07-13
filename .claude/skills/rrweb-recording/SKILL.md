@@ -46,7 +46,7 @@ recordings/<sessionId>/
 - **绝对时间戳对齐**：所有窗口共享墙上时钟，rrweb 事件自带 `timestamp`，无需额外同步协议。主窗口 click 与子窗口 shown 落在同一时间轴，「连接感」自然成立。
 - **子窗口关闭改隐藏**：保留 webview 与 Vue 状态，`useRecorder` 实例不销毁，靠 Rust 定向事件驱动 start/stop 段。
 - **player-* 窗口跳过录制**：回放窗口本身不能被录进会话，否则污染数据。
-- **底层 `Replayer` 而非 `rrweb-player`**：后者是 Vue 2 组件，不能用于 Vue 3；自建 Element Plus 控制条 + 平铺 iframe。
+- **底层 `Replayer` 而非 `rrweb-player`**：后者是 Vue 2 组件，不能用于 Vue 3；自建 transport（自定义播放按钮 + Element Plus slider/select/switch）+ 平铺网格槽位，磁贴内 rrweb 内容保留白底以还原被录页面。
 - **JSONL 格式**：可流式追加、断电不丢整文件、回放按行 parse。
 - **稳定槽位 + spotlight 主窗口**：回放时每个 label 占一个固定网格槽位（不随 show/hide reflow）；主窗口由 focus 时间线自动跟踪或手动选择，占大格，其余为侧槽。主槽/侧槽切换只改 CSS class（`is-main` + `grid-row:1/-1`），**不 reparent** Replayer 容器——rrweb 用 iframe 承载 mirror，reparent 会触发重新加载。
 - **漂移阈值纠偏**：各 Replayer 独立 RAF 与主时钟（`setInterval(50)` + `performance.now()`）可能漂移；`tick` 内读 `replayer.getCurrentTime()` 与期望值对比，超 `DRIFT_THRESHOLD`(120ms) 则 `replayer.play(expect)` re-seek 拉回。rrweb 2.x `play(offset)` 内部先 PAUSE 再 PLAY(offset)，seek+续播一次完成。
@@ -58,10 +58,11 @@ recordings/<sessionId>/
 | --- | --- |
 | [src-tauri/src/lib.rs](src-tauri/src/lib.rs) | `Session` 状态、录制相关命令、`open_window`、`on_window_event` 生命周期拦截 |
 | [src/composables/useRecorder.ts](src/composables/useRecorder.ts) | 每窗口录制器：监听会话广播与段事件、缓冲 flush、`player-*` 跳过 |
-| [src/composables/usePlayer.ts](src/composables/usePlayer.ts) | 回放控制器：加载会话、按区间驱动各 `Replayer`、play/pause/seek/倍速、稳定槽位、spotlight 主窗口（auto focus + 手动）、漂移纠偏、时间轴色带数据 |
+| [src/composables/usePlayer.ts](src/composables/usePlayer.ts) | 回放控制器：加载会话、按区间驱动各 `Replayer`、play/pause/seek/倍速、稳定槽位、spotlight 主窗口（auto focus + 手动）、漂移纠偏、时间轴色带数据；导出 `LANE_COLORS` 并为每个槽位标 `--lane-color`（磁贴头圆点与色带共用） |
 | [src/App.vue](src/App.vue) | 挂载 `useRecorder`，使每个窗口都参与录制 |
-| [src/views/MainView.vue](src/views/MainView.vue) | 开始/停止录制 + 会话列表（回放/删除） |
-| [src/views/PlayerView.vue](src/views/PlayerView.vue) | spotlight 回放 UI + 控制条（时间轴色带 + focus 标记 + 主窗口切换 + 自动跟随开关） |
+| [src/styles/theme.css](src/styles/theme.css) | 全局设计系统：warm-dark 控制台色板（琥珀 `--amber` / 牛血 `--oxblood` / 等宽时间码 `--font-mono`）、Element Plus 全量深色变量覆写（`:root:root` 提权）、组件微调 |
+| [src/views/MainView.vue](src/views/MainView.vue) | 控制轨 + 会话日志双栏：硬件式 REC 控件（胶片倒计环 + 实时 `T+` 计时 + 录制脉冲点）、开始/停止录制、会话列表（回放/删除） |
+| [src/views/PlayerView.vue](src/views/PlayerView.vue) | 平铺编辑器布局：spotlight 回放网格 + 自建 transport（播放按钮 + 时间轴色带 + focus 标记 + playhead 三角 + 倍速 + 跟随焦点） |
 
 ### Rust 命令清单
 
@@ -126,10 +127,12 @@ recordings/<sessionId>/
 - **新增窗口生命周期事件**：在 `on_window_event` 增 match 分支，`append_lifecycle` 落 windows.jsonl；回放侧 `usePlayer` 解析新 type。
 - **新增 Rust 命令**：在 `lib.rs` 加 `#[tauri::command]` 并注册到 `generate_handler![]`；自定义命令无需改 capabilities。
 - **新增带新 label 模式的路由**：同步改 [src-tauri/capabilities/default.json](src-tauri/capabilities/default.json) 的 `windows` glob，否则窗口缺权限。
+- **新增窗口轨道色**：在 `usePlayer.ts` 的 `LANE_COLORS` 数组追加色值，时间轴色带与对应磁贴头圆点同时生效；勿在视图里写临时色值。
 
 ## 约定
 
 - UI 文案中文（zh-CN），与现有一致。
 - 前端自动导入已开：`ref`/`reactive`/`ElMessage` 等无需手动 import（`.vue` 文件中）；`.ts` composable 内可显式 import vue API 以求清晰。
+- 设计系统见 [src/styles/theme.css](src/styles/theme.css)：warm-dark 控制台主题，色板/字号/间距以 CSS 变量定义（`--ink`/`--slate`/`--amber`/`--oxblood`/`--font-mono` 等），Element Plus 经 `:root:root` 变量覆写为深色。视图用平铺布局，勿再用 `el-card shadow="hover"` 包裹；新色值走既有 token，勿临时写死。
 - 类型声明 `src/auto-imports.d.ts`、`src/components.d.ts` 为构建产物，勿手改。
 - Rust crates 走 rsproxy 镜像，勿删 `.cargo/config.toml`。

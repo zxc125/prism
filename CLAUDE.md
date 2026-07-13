@@ -54,6 +54,17 @@ recordings/<sessionId>/
 - 类型声明生成到 [src/auto-imports.d.ts](src/auto-imports.d.ts) 与 [src/components.d.ts](src/components.d.ts)。这两个是构建产物 - 不要手动编辑；运行 `pnpm dev`/`pnpm build` 即可重新生成。
 - UI 文案为中文（zh-CN）。新增用户可见文本时请保持一致的语言。
 
+### 视觉设计约定
+
+任何涉及视觉/样式的变更（新增视图、改配色、改排版、重做交互形态）**必须先调用 `/frontend-design` skill**，按其流程（brainstorm → critique → build → critique again）做出有意图的设计选择，不要直接套用 Element Plus 默认样式或通用暗色模板。
+
+现有设计语言已落地，变更需与之保持一致：
+
+- **设计 token** 集中在 [src/styles/theme.css](src/styles/theme.css)：暖色偏暗底（`--ink`/`--slate`）、骨白文字、**示波器琥珀** `--amber` 主色、**牛血红** `--oxblood` 用于 REC/危险态；等宽字体是身份嗓音（时间码、轨道标签、ID）。不要退回中性纯黑或 acid-green/vermilion 等通用暗色模板配色。
+- **Element Plus 深色化** 通过在 `:root:root` 覆盖 `--el-*` 变量实现（双 specificity 压过 EP 内置 `:root`）；新组件沿用此方式，避免 `el-card shadow="hover"` 之类默认包装，视图为平铺布局。
+- **轨道色** 集中在 [src/composables/usePlayer.ts](src/composables/usePlayer.ts) 的 `LANE_COLORS`，新增窗口轨道色在此扩展。
+- **签名元素**：MainView = 硬件式 REC 控制；PlayerView = 多轨时间轴 + 真实播放头；SettingsView 保持安静。新视图应贡献自己的一个签名元素，而非复刻通用模板。
+
 ### 后端约定
 
 - 应用入口为 [src-tauri/src/lib.rs](src-tauri/src/lib.rs) 的 `run()`；[src-tauri/src/main.rs](src-tauri/src/main.rs) 仅在 release 模式下屏蔽 Windows 控制台窗口并委托调用。新增 Tauri command 必须在 `lib.rs` 的 `generate_handler![]` 中注册。

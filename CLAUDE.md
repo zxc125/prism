@@ -16,6 +16,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `pnpm build` 会先执行 `vue-tsc --noEmit` - 类型错误会导致构建失败。项目未配置 JS/TS 测试框架；仅有的测试是 Rust 的 `cargo test`（目前没有任何测试）。
 
+## 平台演进方向
+
+本项目正从「自录 + 回放工具」演进为**本地优先的前端观测平台**（支持 web / tauri 外部观测，闭环到「回放 + 诊断 + 导出/标注/分享」）。架构与阶段规划见 [docs/架构/](docs/架构/) 与 [docs/阶段路径/](docs/阶段路径/)。
+
+四条锁定决策：
+1. **本地优先** - Tauri App 当分析台（console），零云依赖，不建云后端 RUM。
+2. **观测外部** - Web SDK（npm，单 tab）+ `tauri-plugin-observer`（多窗口对齐），统一走 HTTP sink -> console 本地 server。
+3. **闭环到回放+诊断** - 不做告警/生产 RUM；诊断 = 回放带 error/console/network 上下文 + 导出/标注/分享。
+4. **交错事件模型** - error/console/network 以 rrweb plugin 事件（`type:6`）交错进同一条事件流，与 DOM 共享时间轴。
+
+阶段路径（[docs/阶段路径/](docs/阶段路径/)）：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享。**当前阶段：P1**（console 整体重做为观测站：源监控机架 + 会话浏览器 + 诊断工作台；诊断栏先用 mock 数据，P2 接真实采集）。
+
 ## 架构
 
 Tauri 2 桌面应用：Vue 3 + Vite 6 前端位于 [src/](src/)，Rust 后端位于 [src-tauri/](src-tauri/)。基于 rrweb 2 实现**多窗口录制与回放**。
@@ -56,14 +68,14 @@ recordings/<sessionId>/
 
 ### 视觉设计约定
 
-任何涉及视觉/样式的变更（新增视图、改配色、改排版、重做交互形态）**必须先调用 `/frontend-design` skill**，按其流程（brainstorm → critique → build → critique again）做出有意图的设计选择，不要直接套用 Element Plus 默认样式或通用暗色模板。
+任何涉及视觉/样式的变更（新增视图、改配色、改排版、重做交互形态）**必须先调用 `/frontend-design` skill**，按其流程（brainstorm -> critique -> build -> critique again）做出有意图的设计选择，不要直接套用 Element Plus 默认样式或通用暗色模板。
 
 现有设计语言已落地，变更需与之保持一致：
 
 - **设计 token** 集中在 [src/styles/theme.css](src/styles/theme.css)：暖色偏暗底（`--ink`/`--slate`）、骨白文字、**示波器琥珀** `--amber` 主色、**牛血红** `--oxblood` 用于 REC/危险态；等宽字体是身份嗓音（时间码、轨道标签、ID）。不要退回中性纯黑或 acid-green/vermilion 等通用暗色模板配色。
 - **Element Plus 深色化** 通过在 `:root:root` 覆盖 `--el-*` 变量实现（双 specificity 压过 EP 内置 `:root`）；新组件沿用此方式，避免 `el-card shadow="hover"` 之类默认包装，视图为平铺布局。
-- **轨道色** 集中在 [src/composables/usePlayer.ts](src/composables/usePlayer.ts) 的 `LANE_COLORS`，新增窗口轨道色在此扩展。
-- **签名元素**：MainView = 硬件式 REC 控制；PlayerView = 多轨时间轴 + 真实播放头；SettingsView 保持安静。新视图应贡献自己的一个签名元素，而非复刻通用模板。
+- **轨道色** 集中在 [src/composables/usePlayer.ts](src/composables/usePlayer.ts) 的 `LANE_COLORS`，新增窗口轨道色在此扩展。**来源色**（P1）复用 lane 调色板：本机=`--amber`、web=`--lane-7`、tauri=`--lane-5`。
+- **签名元素**：MainView = 源监控机架（多通道控制室输入 bay，本机通道承袭 REC 脉冲 DNA）；PlayerView = 多轨时间轴 + 真实播放头 + 诊断信号流；SettingsView 保持安静。新视图应贡献自己的一个签名元素，而非复刻通用模板。（P1 重做中：旧 MainView 的硬件式 REC 控件已演化为源机架的本机通道；设计详见 [docs/阶段路径/P1-分析端页面改造.md](docs/阶段路径/P1-分析端页面改造.md)。）
 
 ### 后端约定
 

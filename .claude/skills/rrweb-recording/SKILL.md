@@ -7,7 +7,7 @@ description: Guidance for the rrweb-based multi-window recording & replay system
 
 本 skill 记录该项目中 rrweb 录制/回放功能的**实现方案**、**当前现状**与**未实现功能**。在修改录制相关代码、排查回放问题或规划新功能前，先通读本 skill，避免破坏已有的跨窗口对齐与分段机制。
 
-> 平台演进方向（本地优先观测平台：外部 web/tauri 观测、sink 抽象、导出/标注/分享等）见 `docs/架构/` 与 `docs/阶段路径/`（P3-P6），不在此 skill 重复。
+> 平台演进方向（本地优先观测平台：外部 web/tauri 观测、导出/标注/分享等）见 `docs/架构/` 与 `docs/阶段路径/`（P4-P6），不在此 skill 重复。Sink 传输抽象（P3）已落地，见下文。
 
 ## 实现方案
 
@@ -34,9 +34,9 @@ recordings/<sessionId>/
 
 | 事件 | Rust 动作 | 前端动作 |
 | --- | --- | --- |
-| 主窗口点「开始录制」 | `start_session`：置 active、建目录、写 session.json、补记初始 focus、广播 `recording-session{active:true}` | 各窗口 `useRecorder` 收到广播 -> `invoke("begin_segment")` -> 启动 rrweb + 安装信号 hook |
-| 新窗口首次创建 | `open_window` build | 新窗口 `useRecorder` 挂载时 `is_recording_active` 兜底为 true -> `begin_segment` |
-| 已隐藏窗口再次打开 | `open_window`：`show()`+`focus()`，录制中则 `emit_to(label,"segment",{start})` | `useRecorder` 收到 start -> `begin_segment` 开新段 |
+| 主窗口点「开始录制」 | `start_session`：置 active、建目录、写 session.json、补记初始 focus、广播 `recording-session{active:true}` | 各窗口 `useRecorder` 收到广播 -> `sink.beginSegment()` -> 启动 rrweb + 安装信号 hook |
+| 新窗口首次创建 | `open_window` build | 新窗口 `useRecorder` 挂载时 `sink.isRecordingActive()` 兜底为 true -> `sink.beginSegment()` |
+| 已隐藏窗口再次打开 | `open_window`：`show()`+`focus()`，录制中则 `emit_to(label,"segment",{start})` | `useRecorder` 收到 start -> `sink.beginSegment()` 开新段 |
 | 子窗口点 X 关闭（录制中） | `on_window_event` CloseRequested：`prevent_close`+`hide`、记 hidden、`emit_to` segment:stop | `useRecorder` 收到 stop -> 卸载信号 hook、调 rrweb stop fn、flush |
 | 窗口聚焦 | `on_window_event` Focused：记 focus（跳过 `player-*`） | - |
 | 主窗口关闭 | 不拦截 -> 退出进程 | - |
@@ -57,23 +57,25 @@ recordings/<sessionId>/
 - **漂移阈值纠偏**：各 Replayer 独立 RAF 与主时钟（`setInterval(50)` + `performance.now()`）可能漂移；`tick` 内读 `replayer.getCurrentTime()` 与期望值对比，超 `DRIFT_THRESHOLD`(120ms) 则 `replayer.play(expect)` re-seek 拉回。rrweb 2.x `play(offset)` 内部先 PAUSE 再 PLAY(offset)，seek+续播一次完成。
 - **focus 时间线**：`windows.jsonl` 的 focus 事件驱动自动主窗口；`start_session` 时补记初始 focus（遍历 `webview_windows().is_focused()`），避免 t=0 时间线为空；player-* 窗口的 focus 已过滤，不产生孤儿记录。
 - **交错诊断信号（type:6）**：error/console/network 信号以 rrweb plugin 事件（`type:6`，`data:{plugin,payload}`）交错进同一段事件流，与 DOM 共享绝对时间戳，无需跨流对齐。采集侧 `useRecorder` 在段录制期间安装 hook（error: `onerror`+`unhandledrejection`；console: patch log/warn/error/info/debug + args 序列化截断循环引用；network: patch `fetch`+`XMLHttpRequest`，默认不记 body/headers），经同一 `emit` 落盘，并带 `delay` 供 Replayer 调度安全。回放侧 `usePlayer` 从各 segment 收集 type:6 为统一信号流 + error 红标；rrweb Replayer 对无 handler 的 plugin 事件 no-op，不影响 DOM 回放。
+- **Sink 传输抽象（P3）**：采集逻辑（rrweb record + 信号 hook + 缓冲 flush）与落盘/上报解耦，经 `Sink` 接口（`startSession`/`beginSegment`/`appendEvents`/`appendLifecycle`/`endSession`/`isRecordingActive`）对接不同后端。`TauriSink`（console 自录，进程内 invoke，零序列化）包装现有命令，self-obs 行为零变化；`HttpSink`（外部 SDK 上报 console 本地 HTTP server，按 segment 缓冲/达量或定时 flush/失败重试/`beforeunload` 用 `sendBeacon` 兜底）、`IndexedDBSink`（纯 web 独立回放，IDB 缓存）为 P4/P5 骨架。`useRecorder(sink = new TauriSink())` 默认 TauriSink；外部采集器可注入 HttpSink 复用同一份采集逻辑。会话级命令在 self-obs 由 Rust/MainView 驱动（useRecorder 不调 startSession/endSession），外部 SDK 用完整接口。
 
 ### 文件职责
 
 | 文件 | 职责 |
 | --- | --- |
 | [src-tauri/src/lib.rs](src-tauri/src/lib.rs) | `Session` 状态、录制相关命令、`open_window`、`on_window_event` 生命周期拦截 |
-| [src/composables/useRecorder.ts](src/composables/useRecorder.ts) | 每窗口录制器：监听会话广播与段事件、缓冲 flush、`player-*` 跳过；段录制期间 `installSignalHooks` 安装 error/console/network hook，emit `type:6` 交错进同一段流，停止时卸载 |
+| [src/composables/sink.ts](src/composables/sink.ts) | 传输抽象：`Sink` 接口 + `RREvent`/`SessionMeta`/`LifecycleEvent` 类型；`TauriSink`（包装 invoke，self-obs）/`HttpSink`（上报骨架，P4 联调）/`IndexedDBSink`（本地缓存骨架，预留） |
+| [src/composables/useRecorder.ts](src/composables/useRecorder.ts) | 每窗口录制器：监听会话广播与段事件、缓冲 flush、`player-*` 跳过；经注入 `Sink`（默认 `TauriSink`）落盘，无直接 `invoke`；段录制期间 `installSignalHooks` 安装 error/console/network hook，emit `type:6` 交错进同一段流，停止时卸载 |
 | [src/composables/usePlayer.ts](src/composables/usePlayer.ts) | 回放控制器：加载会话、按区间驱动各 `Replayer`、play/pause/seek/倍速、稳定槽位、spotlight 主窗口（auto focus + 手动）、漂移纠偏、时间轴色带数据、tile 等比缩放（`fitSegment` + `ResizeObserver`）；从 type:6 事件收集诊断信号流（`signals`/`errorMarks`）；导出 `LANE_COLORS` 与 `Signal` 类型并为每个槽位标 `--lane-color` |
 | [src/App.vue](src/App.vue) | 挂载 `useRecorder`，使每个窗口都参与录制 |
 | [src/styles/theme.css](src/styles/theme.css) | 全局设计系统：warm-dark 控制台色板（琥珀 `--amber` / 牛血 `--oxblood` / 等宽时间码 `--font-mono`）、来源色（`--src-self/web/tauri`，复用 lane 调色板）、诊断信号类型色（`--sig-*`）、Element Plus 全量深色变量覆写（`:root:root` 提权） |
 | [src/views/MainView.vue](src/views/MainView.vue) | 会话观测台：源监控机架（本机通道承袭 REC 脉冲 DNA、web/tauri 待接入）+ 会话浏览器（来源过滤 chip/搜索/富行/回放） |
 | [src/views/PlayerView.vue](src/views/PlayerView.vue) | 诊断工作台：spotlight 回放网格 + 诊断信号流（统一流+过滤，随播放头高亮/点击 seek）+ transport（色带 + error 红标 + focus 标记 + playhead + 倍速 + 跟随焦点），诊断栏可折叠 |
-| [src/views/SettingsView.vue](src/views/SettingsView.vue) | 采集/接收/保留配置项（采集开关、HTTP server 端口/token、保留数；P2/P4 落地后生效） |
+| [src/views/SettingsView.vue](src/views/SettingsView.vue) | 采集/接收/保留配置项（采集开关、HTTP server 端口/token、保留数；P2 采集已生效，server 开关待 P4） |
 
 ### Rust 命令清单
 
-`greet`、`open_window`、`start_session`、`stop_session`、`is_recording_active`、`begin_segment`、`append_events`、`list_sessions`、`read_session`、`delete_session`。自定义 command 已在 `generate_handler![]` 注册，无需在 capabilities 授权；`listen` 由 `core:default` 允许。
+`greet`、`open_window`、`start_session`、`stop_session`、`is_recording_active`、`begin_segment`、`append_events`、`list_sessions`、`read_session`、`delete_session`。自定义 command 已在 `generate_handler![]` 注册，无需在 capabilities 授权；`listen` 由 `core:default` 允许。`TauriSink` 包装 `begin_segment`/`append_events`/`is_recording_active`（及 startSession/endSession 对应 `start_session`/`stop_session`）。
 
 ## 当前现状
 
@@ -92,7 +94,8 @@ recordings/<sessionId>/
 - focus 数据补强：会话开始补记初始 focus、过滤 player-* focus 事件。
 - 诊断信号采集（P2）：error/console/network hook 在段录制期间 emit `type:6` 交错事件，与 DOM 同流落盘；console args 序列化（截断循环引用、Node/Error 转结构），network 默认不记 body/headers。
 - 诊断信号流回放（P1+P2）：PlayerView 统一信号流（console/network/error 混排 + 过滤），随播放头高亮、点击 seek；时间轴叠加 error 红标；诊断栏可折叠。
-- 会话观测台布局（P1）：MainView 源监控机架（本机/web/tauri 通道）+ 会话浏览器（来源过滤/搜索）；SettingsView 采集/接收/保留配置项。诊断信号流 P1 用 mock 数据先建，P2 接真实采集。
+- 会话观测台布局（P1）：MainView 源监控机架（本机/web/tauri 通道）+ 会话浏览器（来源过滤/搜索）；SettingsView 采集/接收/保留配置项。
+- Sink 传输抽象（P3）：`useRecorder` 的 `invoke` 全走 `Sink` 接口，默认 `TauriSink`（行为不变）；`HttpSink`/`IndexedDBSink` 骨架为 P4/P5 外部观测预留。
 
 ### 编译验证
 
@@ -102,18 +105,19 @@ recordings/<sessionId>/
 
 ### 运行时实测
 
-已跑 `pnpm tauri dev` 实测确认（replay 布局修复后）：
+已跑 `pnpm tauri dev` 实测确认：
 
-- ✅ spotlight 主槽/侧槽布局（`grid-row:1/-1` + 显式行数）、主窗口自动跟踪与手动切换；横向溢出已消除、播放按钮不再被滚出视口。
+- ✅ spotlight 主槽/侧槽布局（`grid-row:1/-1` + 显式行数）、主窗口自动跟踪与手动切换；横向溢出已消除。
 - ✅ tile 等比缩放（方案 E）生效，spotlight 主区放大 / 窗口缩放自适应。
+- ✅ 会话观测台布局（P1）：源监控机架、会话浏览器（来源过滤/搜索）、诊断信号流 + 时间轴 error 红标（用户实测确认）。
+- ✅ 诊断信号采集（P2）：error/console/network hook、`type:6` 交错回放、信号流随播放头高亮与点击 seek（用户实测确认）。
+- ✅ Sink 抽象（P3）：`useRecorder` 走 Sink 接口、`TauriSink` 包装 invoke，self-obs 录制/回放/信号无回归（用户实测确认）。
 
 仍待实测确认：
 
 - 漂移纠偏的实际收敛效果、`play(offset)` 在长事件流上 re-seek 的延迟。
-- 时间轴色带 / 焦点标记的渲染与点击 seek（修复横向滚动后预期正常，未单独复核）。
 - 录制中关闭子窗口的拦截时序、`emit_to` 定向事件是否被目标窗口稳定接收。
-- 诊断信号采集（P2）：error/console/network hook 捕获完整性、`type:6` 在 Replayer 中 no-op 不破坏 DOM 回放、信号流随播放头高亮与点击 seek。需录**新**会话验证（P2 前旧会话无 type:6，信号流为空）。注：console 应用自身用 Tauri `invoke` 而非 `fetch`，自录 network 通道通常为空（hook 正确，只是无 fetch 可捕），network 价值在 P4 外部 web 应用。
-- 会话观测台布局（P1）：源监控机架视觉、诊断栏与 spotlight 网格共处、来源过滤/搜索。
+- HttpSink/IndexedDBSink 在 P4 接入真实 server / 纯 web 场景后的联调。
 
 ### 已知 MVP 限制
 
@@ -121,12 +125,13 @@ recordings/<sessionId>/
 - 回放布局为稳定槽位 + spotlight，但**未还原原始窗口位置/尺寸**（方案 C，未做）。
 - 录制中关闭主窗口=直接退出，session.json 无 endedAt（不影响回放，但列表时长显示会以「现在」估算）。
 - 诊断信号 body/headers 默认关（PII）；SettingsView 的采集/接收开关未接线（P2 采集已生效，server 开关待 P4）。
+- HttpSink/IndexedDBSink 为骨架，未接入真实后端（P4/P5）。
 
 ## 未实现功能（TODO）
 
-按优先级粗略排序（平台演进的 P3-P6 见 `docs/阶段路径/`）：
+按优先级粗略排序（平台演进的 P4-P6 见 `docs/阶段路径/`）：
 
-1. **运行时测试与修 bug**：基本流程（开始录制 -> 开关子窗口 -> 停止 -> 回放）+ spotlight 布局 + 等比缩放已实测通过；仍待验证漂移纠偏收敛、色带点击 seek、录制中关闭子窗口时序、P1/P2 新增的诊断信号与观测台布局（见「运行时实测」）。
+1. **运行时测试与修 bug**：基本流程（开始录制 -> 开关子窗口 -> 停止 -> 回放）+ spotlight + 等比缩放 + P1/P2/P3 已实测通过；仍待验证漂移纠偏收敛、录制中关闭子窗口时序（见「运行时实测」）。
 2. **位置精确回放（方案 C）**：录制时记窗口 x/y/w/h（`outer_position`/`outer_size`），回放按包围盒缩放 fit 视口、按原位置摆放，还原多窗口空间关系。
 3. **无漂移同步（方案 A）**：主 RAF 循环每帧 `replayer.pause(offset)` 步进驱动各 segment，取代独立 `play`，彻底零漂移。当前已落地阈值纠偏（方案 B，120ms re-seek），A 为可选增强。
 4. **录制元信息编辑**：重命名、备注（需扩展 session.json 与列表 UI）。
@@ -138,8 +143,9 @@ recordings/<sessionId>/
 ## 扩展指引
 
 - **新增录制配置**（采样、遮罩等）：改 `useRecorder.ts` 的 `record({ emit, ...options })` 调用。诊断信号 hook 在 `installSignalHooks`（error/console/network），新增信号类型在此扩展并对应 `usePlayer` 的 `Signal` 类型；network body/headers 默认关（PII），SettingsView 的开关待接线。
+- **新增传输后端**：实现 `Sink` 接口（见 `sink.ts`），注入 `useRecorder(sink)` 或外部采集器。`HttpSink` 的 endpoint/token/batchSize/flushInterval 在 P4 接真实 server 时联调（可加退避/容量上限）；`IndexedDBSink` 的独立回放读取路径在 P4+ 纯 web 场景补。
 - **新增会话级元数据**：扩展 `session.json` 写入字段 + `list_sessions`/`read_session` 读取。
-- **新增窗口生命周期事件**：在 `on_window_event` 增 match 分支，`append_lifecycle` 落 windows.jsonl；回放侧 `usePlayer` 解析新 type。
+- **新增窗口生命周期事件**：在 `on_window_event` 增 match 分支，`append_lifecycle` 落 windows.jsonl；回放侧 `usePlayer` 解析新 type。外部 SDK 走 `sink.appendLifecycle` 上报。
 - **新增 Rust 命令**：在 `lib.rs` 加 `#[tauri::command]` 并注册到 `generate_handler![]`；自定义命令无需改 capabilities。
 - **新增带新 label 模式的路由**：同步改 [src-tauri/capabilities/default.json](src-tauri/capabilities/default.json) 的 `windows` glob，否则窗口缺权限。
 - **新增窗口轨道色**：在 `usePlayer.ts` 的 `LANE_COLORS` 数组追加色值，时间轴色带与对应磁贴头圆点同时生效；勿在视图里写临时色值。新增**来源色**走 `theme.css` 的 `--src-*`（勿复用 lane 色做来源语义）。

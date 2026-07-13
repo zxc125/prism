@@ -1,9 +1,7 @@
 import { record } from "rrweb";
-import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-
-type RREvent = { timestamp: number } & Record<string, unknown>;
+import { TauriSink, type Sink, type RREvent } from "./sink";
 
 type SignalPlugin = "error" | "console" | "network";
 
@@ -187,10 +185,13 @@ function installSignalHooks(
  * - 监听全局 recording-session 广播（start/stop 会话）
  * - 监听定向 segment 事件（复用显示 start / 隐藏 stop）
  * - 兜底：挂载时若会话已进行，自启一段
- * 事件缓冲后每秒 flush 到 Rust 落盘。player-* 窗口不录制（避免回放被录进会话）。
+ * 事件缓冲后每秒 flush 到 Sink 落盘。player-* 窗口不录制（避免回放被录进会话）。
  * 段录制期间安装 error/console/network 信号 hook，emit type:6 交错进同一段事件流。
+ *
+ * 通过注入 Sink 解耦传输：默认 TauriSink（console 自录，进程内 invoke）；
+ * 外部 SDK（P4/P5）可用 HttpSink/IndexedDBSink 复用同一份采集逻辑。
  */
-export function useRecorder() {
+export function useRecorder(sink: Sink = new TauriSink()) {
   const label = getCurrentWebviewWindow().label;
   const skip = label.startsWith("player-");
 
@@ -208,7 +209,7 @@ export function useRecorder() {
     const events = buffer;
     buffer = [];
     try {
-      await invoke("append_events", { segmentId, events });
+      await sink.appendEvents(segmentId, events);
     } catch (e) {
       console.error("[recorder] append_events failed", e);
     }
@@ -223,7 +224,8 @@ export function useRecorder() {
       stopHooks?.();
       stopHooks = null;
     }
-    invoke<string>("begin_segment")
+    sink
+      .beginSegment()
       .then((id) => {
         if (destroyed) return;
         segmentId = id;
@@ -271,7 +273,7 @@ export function useRecorder() {
     );
     // 兜底：会话开始后才创建的窗口，挂载时自启
     try {
-      const active = await invoke<boolean>("is_recording_active");
+      const active = await sink.isRecordingActive();
       if (active) startSegment();
     } catch (e) {
       console.error("[recorder] is_recording_active failed", e);

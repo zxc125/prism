@@ -108,11 +108,17 @@ fn open_window(
         "player" => ("播放器", 960.0, 600.0),
         _ => ("RRWeb Demo", 800.0, 600.0),
     };
-    let url = format!("index.html#{route}");
-
-    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+    // 不在 URL 里带 hash：WebviewUrl::App 接收的是 PathBuf，Windows WebView2 上
+    // # 不会被识别为 URL fragment（macOS WKWebView 会），子窗口会因路径解析失败
+    // 而白屏。改为加载纯 index.html，用 initialization_script 在 Vue router
+    // 初始化前设置 hash —— 此脚本在页面任何脚本之前注入，跨平台一致。
+    let init_script = format!(
+        "if (!window.location.hash) window.location.replace('#{route}');"
+    );
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
         .title(title)
         .inner_size(width, height)
+        .initialization_script(&init_script)
         .build()
         .map_err(|e| e.to_string())?;
 

@@ -28,7 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 阶段路径（[docs/阶段路径/](docs/阶段路径/)）：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享。
 
-**进度**：P1 ✅（源监控机架 + 会话浏览器 + 诊断信号流）· P2 ✅（error/console/network hook，`type:6` 交错进事件流）· P3 ✅（[sink.ts](src/composables/sink.ts) 抽 `Sink` 接口 + `TauriSink`，useRecorder 不再直接 invoke）· **P4 进行中**（Web SDK：console 起 `127.0.0.1` 本地 HTTP server `/ingest/*` + 打包 `@your/observer-sdk` npm 包走 `HttpSink`）· P5 未启动 · P6 未启动。
+**进度**：P1 ✅（源监控机架 + 会话浏览器 + 诊断信号流）· P2 ✅（error/console/network hook，`type:6` 交错进事件流）· P3 ✅（[sink.ts](src/composables/sink.ts) 抽 `Sink` 接口 + `TauriSink`，useRecorder 不再直接 invoke）· P4 ✅（Web SDK：console 起 `127.0.0.1` 本地 HTTP server `/ingest/*`（[ingest.rs](src-tauri/src/ingest.rs)）+ 打包 [`packages/observer-sdk`](packages/observer-sdk)（`@rrweb-demo/observer-sdk`）走 `HttpSink`，self-obs 与 SDK 共用 `SegmentRecorder`；样例 [`examples/web-demo`](examples/web-demo)）· P5 未启动 · P6 未启动。
 
 ## 架构
 

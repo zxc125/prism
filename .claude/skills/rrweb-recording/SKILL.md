@@ -7,7 +7,7 @@ description: Guidance for the rrweb-based multi-window recording & replay system
 
 本 skill 记录该项目中 rrweb 录制/回放功能的**实现方案**、**当前现状**与**未实现功能**。在修改录制相关代码、排查回放问题或规划新功能前，先通读本 skill，避免破坏已有的跨窗口对齐与分段机制。
 
-> 平台演进方向（本地优先观测平台：外部 web/tauri 观测、导出/标注/分享等）见 `docs/架构/` 与 `docs/阶段路径/`（P4-P6），不在此 skill 重复。Sink 传输抽象（P3）已落地，见下文。
+> 平台演进方向（本地优先观测平台：外部 web/tauri 观测、导出/标注/分享等）见 `docs/架构/` 与 `docs/阶段路径/`（P5-P6），不在此 skill 重复。Sink 传输抽象（P3）与 Web SDK + 本地接收 server（P4）已落地，见下文。
 
 ## 实现方案
 
@@ -57,25 +57,28 @@ recordings/<sessionId>/
 - **漂移阈值纠偏**：各 Replayer 独立 RAF 与主时钟（`setInterval(50)` + `performance.now()`）可能漂移；`tick` 内读 `replayer.getCurrentTime()` 与期望值对比，超 `DRIFT_THRESHOLD`(120ms) 则 `replayer.play(expect)` re-seek 拉回。rrweb 2.x `play(offset)` 内部先 PAUSE 再 PLAY(offset)，seek+续播一次完成。
 - **focus 时间线**：`windows.jsonl` 的 focus 事件驱动自动主窗口；`start_session` 时补记初始 focus（遍历 `webview_windows().is_focused()`），避免 t=0 时间线为空；player-* 窗口的 focus 已过滤，不产生孤儿记录。
 - **交错诊断信号（type:6）**：error/console/network 信号以 rrweb plugin 事件（`type:6`，`data:{plugin,payload}`）交错进同一段事件流，与 DOM 共享绝对时间戳，无需跨流对齐。采集侧 `useRecorder` 在段录制期间安装 hook（error: `onerror`+`unhandledrejection`；console: patch log/warn/error/info/debug + args 序列化截断循环引用；network: patch `fetch`+`XMLHttpRequest`，默认不记 body/headers），经同一 `emit` 落盘，并带 `delay` 供 Replayer 调度安全。回放侧 `usePlayer` 从各 segment 收集 type:6 为统一信号流 + error 红标；rrweb Replayer 对无 handler 的 plugin 事件 no-op，不影响 DOM 回放。
-- **Sink 传输抽象（P3）**：采集逻辑（rrweb record + 信号 hook + 缓冲 flush）与落盘/上报解耦，经 `Sink` 接口（`startSession`/`beginSegment`/`appendEvents`/`appendLifecycle`/`endSession`/`isRecordingActive`）对接不同后端。`TauriSink`（console 自录，进程内 invoke，零序列化）包装现有命令，self-obs 行为零变化；`HttpSink`（外部 SDK 上报 console 本地 HTTP server，按 segment 缓冲/达量或定时 flush/失败重试/`beforeunload` 用 `sendBeacon` 兜底）、`IndexedDBSink`（纯 web 独立回放，IDB 缓存）为 P4/P5 骨架。`useRecorder(sink = new TauriSink())` 默认 TauriSink；外部采集器可注入 HttpSink 复用同一份采集逻辑。会话级命令在 self-obs 由 Rust/MainView 驱动（useRecorder 不调 startSession/endSession），外部 SDK 用完整接口。
+- **Sink 传输抽象（P3）+ Web SDK（P4）**：采集逻辑（rrweb record + 信号 hook + 缓冲 flush）与落盘/上报解耦，经 `Sink` 接口（`startSession`/`beginSegment`/`appendEvents`/`appendLifecycle`/`endSession`/`isRecordingActive`）对接不同后端。采集核心（`Sink` 接口、`HttpSink`/`IndexedDBSink`、信号 hook、`SegmentRecorder`）下沉到 npm 包 [`packages/observer-sdk`](packages/observer-sdk)（`@rrweb-demo/observer-sdk`），self-obs 与外部 SDK 共用同一份 `SegmentRecorder`：差别仅在 Sink 注入与驱动方式。`TauriSink`（console 自录，进程内 invoke，零序列化）留在 [sink.ts](src/composables/sink.ts)；`HttpSink`（外部 SDK 上报 console 本地 HTTP server，按 segment 缓冲/达量或定时 flush/失败重试/`beforeunload` 用 `sendBeacon` 兜底）已对接 P4 的 `/ingest/*` server；`IndexedDBSink`（纯 web 独立回放，IDB 缓存）仍为预留骨架。`useRecorder(sink = new TauriSink())` 默认 TauriSink；外部 web 应用 `init({appId, endpoint, token, ...})` 自驱。会话级命令在 self-obs 由 Rust/MainView 驱动（useRecorder 不调 startSession/endSession），外部 SDK 用完整接口。
 
 ### 文件职责
 
 | 文件 | 职责 |
 | --- | --- |
-| [src-tauri/src/lib.rs](src-tauri/src/lib.rs) | `Session` 状态、录制相关命令、`open_window`、`on_window_event` 生命周期拦截 |
-| [src/composables/sink.ts](src/composables/sink.ts) | 传输抽象：`Sink` 接口 + `RREvent`/`SessionMeta`/`LifecycleEvent` 类型；`TauriSink`（包装 invoke，self-obs）/`HttpSink`（上报骨架，P4 联调）/`IndexedDBSink`（本地缓存骨架，预留） |
-| [src/composables/useRecorder.ts](src/composables/useRecorder.ts) | 每窗口录制器：监听会话广播与段事件、缓冲 flush、`player-*` 跳过；经注入 `Sink`（默认 `TauriSink`）落盘，无直接 `invoke`；段录制期间 `installSignalHooks` 安装 error/console/network hook，emit `type:6` 交错进同一段流，停止时卸载 |
+| [src-tauri/src/lib.rs](src-tauri/src/lib.rs) | `Session` 状态、录制相关命令、`open_window`、`on_window_event` 生命周期拦截；声明 `storage`/`ingest` 模块、管理 `IngestState`、启动接收 server、注册 `get/set_ingest_config`；session.json 写 `source:"self"` |
+| [src-tauri/src/storage.rs](src-tauri/src/storage.rs) | 存储层（self-obs 命令与 /ingest handler 共用）：`now_ms`/`recordings_root`/`append_lifecycle`/`append_events_file`/`create_session`/`finalize_session` |
+| [src-tauri/src/ingest.rs](src-tauri/src/ingest.rs) | 本地 HTTP 接收 server（tiny_http，串行）：`/ingest/{session,segment,events,lifecycle,session/end}` -> 复用 storage 落盘；`IngestConfig`/`IngestState`、token 鉴权、CORS、配置持久化、`handle_route`（可测试） |
+| [packages/observer-sdk](packages/observer-sdk) | npm 包 `@rrweb-demo/observer-sdk`：`Sink` 接口 + 类型、`HttpSink`/`IndexedDBSink`、信号 hook（`installSignalHooks`）、`SegmentRecorder`、`init()`；self-obs 与外部 SDK 共用 |
+| [src/composables/sink.ts](src/composables/sink.ts) | `TauriSink`（包装 invoke，self-obs）；从 observer-sdk re-export `Sink`/`HttpSink`/`IndexedDBSink` 及类型 |
+| [src/composables/useRecorder.ts](src/composables/useRecorder.ts) | 每窗口录制器：监听会话广播与段事件、`player-*` 跳过；用 SDK 的 `SegmentRecorder`（注入 `TauriSink`）驱动 start/stop，无直接 `invoke` |
 | [src/composables/usePlayer.ts](src/composables/usePlayer.ts) | 回放控制器：加载会话、按区间驱动各 `Replayer`、play/pause/seek/倍速、稳定槽位、spotlight 主窗口（auto focus + 手动）、漂移纠偏、时间轴色带数据、tile 等比缩放（`fitSegment` + `ResizeObserver`）；从 type:6 事件收集诊断信号流（`signals`/`errorMarks`）；导出 `LANE_COLORS` 与 `Signal` 类型并为每个槽位标 `--lane-color` |
 | [src/App.vue](src/App.vue) | 挂载 `useRecorder`，使每个窗口都参与录制 |
 | [src/styles/theme.css](src/styles/theme.css) | 全局设计系统：warm-dark 控制台色板（琥珀 `--amber` / 牛血 `--oxblood` / 等宽时间码 `--font-mono`）、来源色（`--src-self/web/tauri`，复用 lane 调色板）、诊断信号类型色（`--sig-*`）、Element Plus 全量深色变量覆写（`:root:root` 提权） |
-| [src/views/MainView.vue](src/views/MainView.vue) | 会话观测台：源监控机架（本机通道承袭 REC 脉冲 DNA、web/tauri 待接入）+ 会话浏览器（来源过滤 chip/搜索/富行/回放） |
+| [src/views/MainView.vue](src/views/MainView.vue) | 会话观测台：源监控机架（本机通道承袭 REC 脉冲 DNA、web 通道按 server 监听状态点亮 + 显示接入点与 web 会话数、tauri 待接入）+ 会话浏览器（来源过滤 chip/搜索/富行/回放，来源取 session.json 的 `source` 字段） |
 | [src/views/PlayerView.vue](src/views/PlayerView.vue) | 诊断工作台：spotlight 回放网格 + 诊断信号流（统一流+过滤，随播放头高亮/点击 seek）+ transport（色带 + error 红标 + focus 标记 + playhead + 倍速 + 跟随焦点），诊断栏可折叠 |
-| [src/views/SettingsView.vue](src/views/SettingsView.vue) | 采集/接收/保留配置项（采集开关、HTTP server 端口/token、保留数；P2 采集已生效，server 开关待 P4） |
+| [src/views/SettingsView.vue](src/views/SettingsView.vue) | 采集/接收/保留配置项：接收（HTTP server enabled/端口/token）已接线持久化（`get/set_ingest_config`，端口重启生效）；采集开关固定全开，按需过滤待接线 |
 
 ### Rust 命令清单
 
-`greet`、`open_window`、`start_session`、`stop_session`、`is_recording_active`、`begin_segment`、`append_events`、`list_sessions`、`read_session`、`delete_session`。自定义 command 已在 `generate_handler![]` 注册，无需在 capabilities 授权；`listen` 由 `core:default` 允许。`TauriSink` 包装 `begin_segment`/`append_events`/`is_recording_active`（及 startSession/endSession 对应 `start_session`/`stop_session`）。
+`greet`、`open_window`、`start_session`、`stop_session`、`is_recording_active`、`begin_segment`、`append_events`、`list_sessions`、`read_session`、`delete_session`、`get_ingest_config`、`set_ingest_config`。自定义 command 已在 `generate_handler![]` 注册，无需在 capabilities 授权；`listen` 由 `core:default` 允许。`TauriSink` 包装 `begin_segment`/`append_events`/`is_recording_active`（及 startSession/endSession 对应 `start_session`/`stop_session`）。`get/set_ingest_config` 读写 `IngestState`（`enabled`/`port`/`token`，持久化到 `appDataDir/ingest-config.json`）。
 
 ## 当前现状
 
@@ -95,13 +98,15 @@ recordings/<sessionId>/
 - 诊断信号采集（P2）：error/console/network hook 在段录制期间 emit `type:6` 交错事件，与 DOM 同流落盘；console args 序列化（截断循环引用、Node/Error 转结构），network 默认不记 body/headers。
 - 诊断信号流回放（P1+P2）：PlayerView 统一信号流（console/network/error 混排 + 过滤），随播放头高亮、点击 seek；时间轴叠加 error 红标；诊断栏可折叠。
 - 会话观测台布局（P1）：MainView 源监控机架（本机/web/tauri 通道）+ 会话浏览器（来源过滤/搜索）；SettingsView 采集/接收/保留配置项。
-- Sink 传输抽象（P3）：`useRecorder` 的 `invoke` 全走 `Sink` 接口，默认 `TauriSink`（行为不变）；`HttpSink`/`IndexedDBSink` 骨架为 P4/P5 外部观测预留。
+- Sink 传输抽象（P3）：`useRecorder` 走 `SegmentRecorder`（SDK）+ 注入 `TauriSink`，self-obs 行为不变；采集核心下沉到 observer-sdk 包。
+- Web SDK + 本地接收 server（P4）：console 启动 tiny_http server 监听 `127.0.0.1:1421`（端口可配），`/ingest/*` 复用 storage 落盘到同一 `recordings/` 结构（外部会话 `source:"web"`，带 `appId`/`env`/...）；token 鉴权 + CORS；`HttpSink` 对接真实后端，批量/重试/sendBeacon 兜底。npm 包 `@rrweb-demo/observer-sdk` 的 `init({appId, endpoint, token, ...})` 供外部 web 应用嵌入；样例见 `examples/web-demo`。`cargo test` 覆盖 ingest 完整会话落盘格式。
 
 ### 编译验证
 
-- `cargo check`（src-tauri 内）通过。
+- `cargo check` / `cargo test`（src-tauri 内）通过（ingest 落盘格式有单测）。
 - `pnpm exec vue-tsc --noEmit` 通过。
 - `pnpm build`（含 vite 构建）通过。
+- `pnpm --filter @rrweb-demo/observer-sdk build` 产 `dist/index.js`；`examples/web-demo` `tsc --noEmit` 通过。
 
 ### 运行时实测
 
@@ -117,19 +122,19 @@ recordings/<sessionId>/
 
 - 漂移纠偏的实际收敛效果、`play(offset)` 在长事件流上 re-seek 的延迟。
 - 录制中关闭子窗口的拦截时序、`emit_to` 定向事件是否被目标窗口稳定接收。
-- HttpSink/IndexedDBSink 在 P4 接入真实 server / 纯 web 场景后的联调。
+- HttpSink 已对接 P4 本地 server（端到端 E2E 仍待跑：web demo 上报 -> console 列表 -> 回放）；IndexedDBSink 独立回放读取路径仍待补。
 
 ### 已知 MVP 限制
 
 - 回放各 segment 仍各自跑独立 RAF，靠 120ms 阈值纠偏拉回（有界，非零漂移）；彻底零漂移需主时钟步进（方案 A，未做）。
 - 回放布局为稳定槽位 + spotlight，但**未还原原始窗口位置/尺寸**（方案 C，未做）。
 - 录制中关闭主窗口=直接退出，session.json 无 endedAt（不影响回放，但列表时长显示会以「现在」估算）。
-- 诊断信号 body/headers 默认关（PII）；SettingsView 的采集/接收开关未接线（P2 采集已生效，server 开关待 P4）。
-- HttpSink/IndexedDBSink 为骨架，未接入真实后端（P4/P5）。
+- 诊断信号 body/headers 默认关（PII）；SettingsView 采集开关固定全开、按需过滤待接线（接收开关已接线）。
+- HttpSink 已对接 P4 本地 server；IndexedDBSink 仍为预留骨架（读取路径未补）。外部 web 会话无 `endedAt` 时列表时长以「现在」估算。
 
 ## 未实现功能（TODO）
 
-按优先级粗略排序（平台演进的 P4-P6 见 `docs/阶段路径/`）：
+按优先级粗略排序（P4 已落地；平台演进的 P5-P6 见 `docs/阶段路径/`）：
 
 1. **运行时测试与修 bug**：基本流程（开始录制 -> 开关子窗口 -> 停止 -> 回放）+ spotlight + 等比缩放 + P1/P2/P3 已实测通过；仍待验证漂移纠偏收敛、录制中关闭子窗口时序（见「运行时实测」）。
 2. **位置精确回放（方案 C）**：录制时记窗口 x/y/w/h（`outer_position`/`outer_size`），回放按包围盒缩放 fit 视口、按原位置摆放，还原多窗口空间关系。
@@ -143,7 +148,7 @@ recordings/<sessionId>/
 ## 扩展指引
 
 - **新增录制配置**（采样、遮罩等）：改 `useRecorder.ts` 的 `record({ emit, ...options })` 调用。诊断信号 hook 在 `installSignalHooks`（error/console/network），新增信号类型在此扩展并对应 `usePlayer` 的 `Signal` 类型；network body/headers 默认关（PII），SettingsView 的开关待接线。
-- **新增传输后端**：实现 `Sink` 接口（见 `sink.ts`），注入 `useRecorder(sink)` 或外部采集器。`HttpSink` 的 endpoint/token/batchSize/flushInterval 在 P4 接真实 server 时联调（可加退避/容量上限）；`IndexedDBSink` 的独立回放读取路径在 P4+ 纯 web 场景补。
+- **新增传输后端**：实现 `Sink` 接口（见 observer-sdk 的 `sinks.ts`），注入 `useRecorder(sink)` 或外部采集器。`HttpSink` 已对接 P4 server（endpoint/token 即 console 设置页的接入点/token；可加退避/容量上限增强）；`IndexedDBSink` 的独立回放读取路径待补。
 - **新增会话级元数据**：扩展 `session.json` 写入字段 + `list_sessions`/`read_session` 读取。
 - **新增窗口生命周期事件**：在 `on_window_event` 增 match 分支，`append_lifecycle` 落 windows.jsonl；回放侧 `usePlayer` 解析新 type。外部 SDK 走 `sink.appendLifecycle` 上报。
 - **新增 Rust 命令**：在 `lib.rs` 加 `#[tauri::command]` 并注册到 `generate_handler![]`；自定义命令无需改 capabilities。

@@ -1,13 +1,16 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+// Learn more about Tauri commands at https://tauri.app/develop/calling-rust-from-js/
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 use tauri::{Emitter, EventTarget, Manager, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent};
+
+mod ingest;
+mod storage;
+
+use storage::{append_events_file, append_lifecycle, now_ms, recordings_root};
 
 /// 录制会话状态。active 期间所有窗口的 rrweb 事件按 segment 落盘。
 #[derive(Default)]
@@ -22,20 +25,6 @@ struct Session {
     current: HashMap<String, String>,
 }
 
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
-
-fn recordings_root(app: &tauri::AppHandle) -> PathBuf {
-    app.path()
-        .app_data_dir()
-        .expect("app data dir")
-        .join("recordings")
-}
-
 /// 由路由推导窗口 label：/settings -> settings，/player/abc -> player-abc，/ -> main。
 /// 同路由 = 同 label = 单实例（聚焦已有）；路由带不同 :id = 多实例。
 fn window_label(route: &str) -> String {
@@ -45,31 +34,6 @@ fn window_label(route: &str) -> String {
     } else {
         label
     }
-}
-
-fn append_lifecycle(dir: &PathBuf, evt: Value) -> Result<(), String> {
-    let path = dir.join("windows.jsonl");
-    let mut f = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|e| e.to_string())?;
-    writeln!(f, "{}", evt).map_err(|e| e.to_string())
-}
-
-fn append_events_file(dir: &PathBuf, segment_id: &str, events: &[Value]) -> Result<(), String> {
-    let seg_dir = dir.join("segments");
-    fs::create_dir_all(&seg_dir).map_err(|e| e.to_string())?;
-    let path = seg_dir.join(format!("{}.jsonl", segment_id));
-    let mut f = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|e| e.to_string())?;
-    for e in events {
-        writeln!(f, "{}", e).map_err(|e| e.to_string())?;
-    }
-    Ok(())
 }
 
 #[tauri::command]
@@ -111,7 +75,7 @@ fn open_window(
     // 不在 URL 里带 hash：WebviewUrl::App 接收的是 PathBuf，Windows WebView2 上
     // # 不会被识别为 URL fragment（macOS WKWebView 会），子窗口会因路径解析失败
     // 而白屏。改为加载纯 index.html，用 initialization_script 在 Vue router
-    // 初始化前设置 hash —— 此脚本在页面任何脚本之前注入，跨平台一致。
+    // 初始化前设置 hash -- 此脚本在页面任何脚本之前注入，跨平台一致。
     let init_script = format!(
         "if (!window.location.hash) window.location.replace('#{route}');"
     );
@@ -142,7 +106,7 @@ fn start_session(app: tauri::AppHandle, state: tauri::State<Mutex<Session>>) -> 
     }
     fs::write(
         dir.join("session.json"),
-        json!({ "id": id, "startedAt": started_at }).to_string(),
+        json!({ "id": id, "source": "self", "startedAt": started_at }).to_string(),
     )
     .map_err(|e| e.to_string())?;
     // 补记初始 focus：会话开始时当前聚焦窗口，避免 focus 时间线在 t=0 为空
@@ -183,7 +147,8 @@ fn stop_session(app: tauri::AppHandle, state: tauri::State<Mutex<Session>>) -> R
         let ended_at = now_ms();
         fs::write(
             dir.join("session.json"),
-            json!({ "id": id, "startedAt": started_at, "endedAt": ended_at }).to_string(),
+            json!({ "id": id, "source": "self", "startedAt": started_at, "endedAt": ended_at })
+                .to_string(),
         )
         .map_err(|e| e.to_string())?;
     }
@@ -373,7 +338,19 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(Session::default()))
+        .manage(Mutex::new(ingest::IngestState::default()))
         .on_window_event(on_window_event)
+        .setup(|app| {
+            // 载入持久化的接收配置，再启动 HTTP server（端口取自配置）
+            let cfg = ingest::load_config(app.handle());
+            {
+                let state = app.state::<Mutex<ingest::IngestState>>();
+                let mut s = state.lock().expect("ingest state poisoned");
+                s.config = cfg;
+            }
+            ingest::start_server(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             open_window,
@@ -385,6 +362,8 @@ pub fn run() {
             list_sessions,
             read_session,
             delete_session,
+            ingest::get_ingest_config,
+            ingest::set_ingest_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

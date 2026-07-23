@@ -1,8 +1,22 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-type Session = { id: string; startedAt: number; endedAt?: number };
 type Source = "self" | "web" | "tauri";
+type Session = {
+  id: string;
+  startedAt: number;
+  endedAt?: number;
+  source?: Source;
+  appId?: string;
+};
+type IngestStatus = {
+  enabled: boolean;
+  port: number;
+  token: string;
+  listening: boolean;
+  addr: string | null;
+};
 
 const recording = ref(false);
 const startedAt = ref<number | null>(null);
@@ -10,6 +24,7 @@ const elapsedMs = ref(0);
 let tickHandle: number | null = null;
 
 const sessions = ref<Session[]>([]);
+const server = ref<IngestStatus | null>(null);
 
 const srcFilter = ref<"all" | Source>("all");
 const search = ref("");
@@ -32,11 +47,11 @@ const srcLabel: Record<Source, string> = {
   tauri: "tauri",
 };
 
-// 当前所有会话均来自本机自录；外部源（web/tauri）P4/P5 落地后扩展
-function sourceOf(_s: Session): Source {
-  return "self";
+// 来源取自 session.json 的 source 字段：self-obs 写 "self"，web SDK 写 "web"
+function sourceOf(s: Session): Source {
+  return (s.source as Source) ?? "self";
 }
-// 错误计数：P2 采集落地前为 0（占位，仅 >0 时显示徽标）
+// 错误计数：list_sessions 仅返回元信息，不含事件计数；P4 暂留 0（回放时信号流呈现）
 function errCount(_s: Session): number {
   return 0;
 }
@@ -46,6 +61,14 @@ async function refreshSessions() {
     sessions.value = await invoke("list_sessions");
   } catch (e) {
     ElMessage.error(`读取列表失败: ${e}`);
+  }
+}
+
+async function loadServer() {
+  try {
+    server.value = await invoke<IngestStatus>("get_ingest_config");
+  } catch (e) {
+    console.error("[main] get_ingest_config failed", e);
   }
 }
 
@@ -160,8 +183,43 @@ const listTitle = computed(() =>
   sessions.value.length ? `${sessions.value.length} 个会话` : "会话观测台",
 );
 
-onMounted(refreshSessions);
-onBeforeUnmount(stopTick);
+// web 通道接入指示：server 已监听即点亮，并显示已收到的 web 会话数
+const webReady = computed(
+  () => !!server.value?.listening && server.value?.enabled,
+);
+const webCount = computed(
+  () => sessions.value.filter((s) => sourceOf(s) === "web").length,
+);
+const webStateText = computed(() => {
+  if (!server.value) return "读取中";
+  if (!server.value.listening) return "未监听 · 端口占用？";
+  if (!server.value.enabled) return "已停用 · 设置页开启";
+  return `监听 ${server.value.addr} · ${webCount.value} 个会话`;
+});
+const serverStateText = computed(() => {
+  if (!server.value) return "读取中";
+  if (!server.value.listening) return "未监听";
+  if (!server.value.enabled) return "已停用";
+  return `监听 ${server.value.addr}`;
+});
+
+let unlistenFocus: (() => void) | null = null;
+onMounted(async () => {
+  await Promise.all([refreshSessions(), loadServer()]);
+  // 切回 console 窗口时自动刷新（外部 web SDK 上报后切回即可见）
+  unlistenFocus = await getCurrentWebviewWindow().onFocusChanged(
+    ({ payload: focused }) => {
+      if (focused) {
+        void refreshSessions();
+        void loadServer();
+      }
+    },
+  );
+});
+onBeforeUnmount(() => {
+  stopTick();
+  unlistenFocus?.();
+});
 </script>
 
 <template>
@@ -207,13 +265,18 @@ onBeforeUnmount(stopTick);
           </div>
         </div>
 
-        <!-- web 通道（待接入） -->
-        <div class="channel is-pending" style="--c: var(--src-web)">
+        <!-- web 通道：server 监听即点亮 -->
+        <div
+          class="channel"
+          :class="{ 'is-pending': !webReady }"
+          style="--c: var(--src-web)"
+        >
           <div class="ch-head">
-            <span class="ch-dot" aria-hidden="true" />
+            <span class="ch-dot" :class="{ 'is-up': webReady }" aria-hidden="true" />
             <span class="ch-label mono">web</span>
+            <span v-if="webReady" class="ch-addr mono">{{ server?.addr }}</span>
           </div>
-          <div class="ch-state eyebrow">待接入 · P4</div>
+          <div class="ch-state eyebrow">{{ webStateText }}</div>
         </div>
 
         <!-- tauri 通道（待接入） -->
@@ -228,9 +291,13 @@ onBeforeUnmount(stopTick);
 
       <div class="rail-foot">
         <div class="server-status">
-          <span class="ss-dot" aria-hidden="true" />
+          <span
+            class="ss-dot"
+            :class="{ 'is-up': webReady }"
+            aria-hidden="true"
+          />
           <span class="mono">server</span>
-          <span class="ss-state eyebrow">未启用 · P4</span>
+          <span class="ss-state eyebrow">{{ serverStateText }}</span>
         </div>
         <button class="link" @click="refreshSessions">
           <span class="mono">↻</span> 刷新列表
@@ -271,7 +338,7 @@ onBeforeUnmount(stopTick);
       <div class="session-list">
         <div v-if="!filteredSessions.length" class="empty">
           {{
-            sessions.length ? "无匹配会话" : "暂无会话 · 在左侧本机通道开始录制"
+            sessions.length ? "无匹配会话" : "暂无会话 · 在左侧本机通道开始录制，或用 web SDK 上报"
           }}
         </div>
         <div v-for="s in filteredSessions" :key="s.id" class="row">
@@ -375,6 +442,9 @@ onBeforeUnmount(stopTick);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--c, var(--ash)) 22%, transparent);
   flex-shrink: 0;
 }
+.ch-dot.is-up {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--c, var(--ash)) 60%, transparent);
+}
 .channel.is-live .ch-dot {
   background: var(--oxblood-soft);
   box-shadow: 0 0 8px var(--oxblood);
@@ -387,6 +457,12 @@ onBeforeUnmount(stopTick);
 }
 .channel.is-pending .ch-label {
   color: var(--ash);
+}
+.ch-addr {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--src-web);
+  opacity: 0.85;
 }
 .ch-act {
   margin-left: auto;
@@ -470,6 +546,10 @@ onBeforeUnmount(stopTick);
   height: 7px;
   border-radius: 50%;
   background: var(--ash-deep);
+}
+.ss-dot.is-up {
+  background: var(--src-web);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--src-web) 60%, transparent);
 }
 .ss-state {
   margin-left: auto;

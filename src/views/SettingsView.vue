@@ -1,23 +1,64 @@
 <script setup lang="ts">
+import { invoke } from "@tauri-apps/api/core";
+
+type IngestStatus = {
+  enabled: boolean;
+  port: number;
+  token: string;
+  listening: boolean;
+  addr: string | null;
+};
+
 const form = reactive({
   theme: "dark",
   autoStart: false,
-  // 采集（P2 落地生效）
+  // 采集（采集器固定全开；按需开关待接线）
   captureErrors: true,
   captureConsole: true,
   captureNetwork: true,
   captureNetBody: false,
   // 接收（P4 落地生效）
-  serverEnabled: false,
+  serverEnabled: true,
   serverPort: 1421,
   serverToken: "",
   // 保留
   retainMax: 50,
 });
 
-function save() {
-  ElMessage.success("设置已保存");
+const status = ref<IngestStatus | null>(null);
+
+async function load() {
+  try {
+    const s = await invoke<IngestStatus>("get_ingest_config");
+    status.value = s;
+    form.serverEnabled = s.enabled;
+    form.serverPort = s.port;
+    form.serverToken = s.token;
+  } catch (e) {
+    ElMessage.error(`读取接收配置失败: ${e}`);
+  }
 }
+
+async function save() {
+  try {
+    status.value = await invoke<IngestStatus>("set_ingest_config", {
+      config: {
+        enabled: form.serverEnabled,
+        port: form.serverPort,
+        token: form.serverToken,
+      },
+    });
+    ElMessage.success("接收设置已保存（端口修改重启生效）");
+  } catch (e) {
+    ElMessage.error(`保存失败: ${e}`);
+  }
+}
+
+const endpoint = computed(() =>
+  status.value?.addr ? `http://${status.value.addr}` : `http://127.0.0.1:${form.serverPort}`,
+);
+
+onMounted(load);
 </script>
 
 <template>
@@ -25,7 +66,7 @@ function save() {
     <header class="settings-head">
       <span class="eyebrow">偏好</span>
       <h1 class="settings-title">设置</h1>
-      <p class="settings-sub">采集与接收项在对应阶段（P2 / P4）落地后生效。</p>
+      <p class="settings-sub">接收项（P4）已生效；采集开关固定全开，按需过滤待后续接线。</p>
     </header>
 
     <el-form label-width="96px" class="form">
@@ -73,13 +114,21 @@ function save() {
             controls-position="right"
             style="width: 140px"
           />
+          <span class="field-hint">修改后重启生效</span>
         </el-form-item>
         <el-form-item label="鉴权 token">
           <el-input
             v-model="form.serverToken"
-            placeholder="本地 token · 避免同机误投"
+            placeholder="留空 = 不鉴权（本机回环）"
             style="width: 260px"
           />
+          <span class="field-hint">SDK init 传入同一 token</span>
+        </el-form-item>
+        <el-form-item label="接入点">
+          <code class="endpoint mono">{{ endpoint }}</code>
+          <span class="field-hint">
+            {{ status?.listening ? (status.enabled ? "监听中" : "已停用") : "未监听 · 端口占用？" }}
+          </span>
         </el-form-item>
       </div>
 
@@ -151,6 +200,13 @@ function save() {
   color: var(--ash-deep);
   font-size: var(--fs-xs);
   margin-left: 12px;
+}
+.endpoint {
+  padding: 3px 8px;
+  background: var(--slate-2);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-sm);
+  color: var(--src-web);
 }
 .settings-foot {
   padding-top: 16px;

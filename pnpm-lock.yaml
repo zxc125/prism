@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@rrweb-demo/observer-sdk':
+        specifier: workspace:*
+        version: link:packages/observer-sdk
       '@tauri-apps/api':
         specifier: ^2
         version: 2.11.1
@@ -48,6 +51,34 @@ importers:
       vue-tsc:
         specifier: ^2.1.10
         version: 2.2.12(typescript@5.6.3)
+
+  examples/web-demo:
+    dependencies:
+      '@rrweb-demo/observer-sdk':
+        specifier: workspace:*
+        version: link:../../packages/observer-sdk
+    devDependencies:
+      rrweb:
+        specifier: ^2.1.0
+        version: 2.1.0
+      typescript:
+        specifier: ~5.6.2
+        version: 5.6.3
+      vite:
+        specifier: ^6.0.3
+        version: 6.4.3(yaml@2.9.0)
+
+  packages/observer-sdk:
+    devDependencies:
+      rrweb:
+        specifier: ^2.1.0
+        version: 2.1.0
+      typescript:
+        specifier: ~5.6.2
+        version: 5.6.3
+      vite:
+        specifier: ^6.0.3
+        version: 6.4.3(yaml@2.9.0)
 
 packages:
 

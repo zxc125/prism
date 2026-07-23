@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" width="device-width, initial-scale=1.0" />
+    <title>observer-sdk · 被观测样例</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: -apple-system, system-ui, sans-serif;
+        max-width: 720px;
+        margin: 40px auto;
+        padding: 0 20px;
+        line-height: 1.6;
+      }
+      .badge {
+        display: inline-block;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: #6FA8DC;
+        color: #fff;
+        margin-left: 8px;
+      }
+      .row { margin: 12px 0; }
+      button {
+        padding: 6px 14px;
+        margin-right: 8px;
+        cursor: pointer;
+        border: 1px solid #888;
+        background: transparent;
+        border-radius: 4px;
+      }
+      code { background: rgba(128,128,128,0.15); padding: 1px 5px; border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <h1>被观测样例应用 <span class="badge" id="status">启动中…</span></h1>
+    <p>
+      本页面嵌入了 <code>@rrweb-demo/observer-sdk</code>，正在录制 DOM + 诊断信号并上报到
+      console 的本地 server（<code id="endpoint">http://127.0.0.1:1421</code>）。
+      操作后切回 console 即可在会话列表看到本会话并回放。
+    </p>
+
+    <div class="row">
+      <button onclick="logThings()">console 信号</button>
+      <button onclick="fetchThing()">网络信号</button>
+      <button onclick="boom()">触发错误</button>
+      <button onclick="rejectThing()">未捕获 Promise</button>
+      <button id="stop" onclick="stopSdk()">停止上报</button>
+    </div>
+
+    <p>试着输入、滚动、点击 -- DOM 变更都会被记录。</p>
+    <input placeholder="随便输入点什么" style="padding:6px;width:100%;margin:8px 0" />
+    <ul id="list"></ul>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

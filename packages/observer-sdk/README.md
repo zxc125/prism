@@ -21,6 +21,10 @@ await ctrl.stop();
 
 会话 = 一次页面访问；SPA 路由连续，整页刷新开新段。`signals` 可按需只开 `error`/`console`/`network`，默认全开。
 
+## 注意：被观测页需显式设置背景色
+
+rrweb 只录 DOM 样式，**不录浏览器画布默认色**（`color-scheme` / 浏览器默认白底）。若页面仅靠 `color-scheme: light dark` 取默认背景与文字色，回放时 iframe 画布透明会透出播放器底色，深色系统下浅色文字可能落在白底上看不见。请给 `html, body` 显式写 `background` 与 `color`，录制即可忠实还原（参见 `examples/web-demo`）。
+
 ## 架构
 
 采集逻辑（rrweb `record` + 信号 hook + 缓冲 flush）经 `Sink` 接口与落盘/上报解耦：

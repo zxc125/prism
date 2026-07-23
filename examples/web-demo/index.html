@@ -5,33 +5,56 @@
     <meta name="viewport" width="device-width, initial-scale=1.0" />
     <title>observer-sdk · 被观测样例</title>
     <style>
-      :root { color-scheme: light dark; }
-      body {
-        font-family: -apple-system, system-ui, sans-serif;
-        max-width: 720px;
-        margin: 40px auto;
-        padding: 0 20px;
+      /* 显式 background/color：rrweb 只录 DOM 样式、不录浏览器画布默认色，
+         若靠 color-scheme 默认值，回放时 iframe 画布透明会透出播放器白底，
+         深色系统下浅色文字落在白底上看不见。显式写死后录制可忠实还原。 */
+      :root { color-scheme: light; }
+      html, body {
+        margin: 0;
+        background: #f5f3ee;
+        color: #2a2622;
+        font-family: -apple-system, system-ui, "Segoe UI", "PingFang SC", sans-serif;
         line-height: 1.6;
       }
+      body { max-width: 720px; margin: 0 auto; padding: 40px 20px; }
+      h1 { font-size: 22px; margin: 0 0 8px; }
+      p { color: #4a443c; }
       .badge {
         display: inline-block;
         font-size: 12px;
         padding: 2px 8px;
         border-radius: 4px;
-        background: #6FA8DC;
+        background: #3a6fa8;
         color: #fff;
         margin-left: 8px;
+        vertical-align: middle;
       }
-      .row { margin: 12px 0; }
+      .row { margin: 14px 0; }
       button {
         padding: 6px 14px;
         margin-right: 8px;
         cursor: pointer;
-        border: 1px solid #888;
-        background: transparent;
+        border: 1px solid #b8b0a2;
+        background: #fff;
+        color: #2a2622;
         border-radius: 4px;
       }
-      code { background: rgba(128,128,128,0.15); padding: 1px 5px; border-radius: 3px; }
+      button:hover { border-color: #6a6358; }
+      code {
+        background: rgba(0, 0, 0, 0.06);
+        padding: 1px 5px;
+        border-radius: 3px;
+        color: #6a4a1c;
+      }
+      input {
+        padding: 6px;
+        width: 100%;
+        margin: 8px 0;
+        border: 1px solid #b8b0a2;
+        border-radius: 4px;
+        background: #fff;
+        color: #2a2622;
+      }
     </style>
   </head>
   <body>

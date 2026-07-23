@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tauri Demo · 被观测应用</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: -apple-system, system-ui, sans-serif;
+        background: #1a1a1a;
+        color: #e8e6e1;
+      }
+      h1 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0 0 4px;
+        letter-spacing: 0.02em;
+      }
+      .sub {
+        font-size: 12px;
+        color: #888;
+        margin-bottom: 20px;
+        font-family: ui-monospace, monospace;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        background: #333;
+        font-size: 13px;
+        margin-bottom: 20px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #888;
+      }
+      .dot.on {
+        background: #8AB36A;
+        box-shadow: 0 0 8px #8AB36A;
+      }
+      .dot.err {
+        background: #B5383A;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      button {
+        appearance: none;
+        border: 1px solid #444;
+        background: #2a2a2a;
+        color: #e8e6e1;
+        font-size: 13px;
+        padding: 8px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      button:hover {
+        border-color: #666;
+        background: #333;
+      }
+      button.primary {
+        border-color: #C8893A;
+        color: #C8893A;
+      }
+      button.danger {
+        border-color: #B5383A;
+        color: #B5383A;
+      }
+      ul {
+        margin: 16px 0 0;
+        padding: 0;
+        list-style: none;
+        font-size: 12px;
+        color: #aaa;
+        font-family: ui-monospace, monospace;
+      }
+      li {
+        padding: 3px 0;
+      }
+      .endpoint {
+        color: #C8893A;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tauri Demo · 被观测应用</h1>
+    <div class="sub">
+      window: <span id="win"></span> · 上报到 <span class="endpoint" id="endpoint"></span>
+    </div>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="status">初始化…</span>
+    </div>
+    <div class="row">
+      <button class="primary" onclick="openChild()">＋ 开子窗口</button>
+      <button onclick="logThings()">console.log</button>
+      <button onclick="fetchThing()">fetch</button>
+      <button onclick="boom()">抛错</button>
+      <button class="danger" onclick="stopObs()">停止观测</button>
+    </div>
+    <ul id="list"></ul>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

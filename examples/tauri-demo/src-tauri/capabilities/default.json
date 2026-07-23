@@ -1,11 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main", "settings", "player-*"],
+  "description": "Capability for demo windows",
+  "windows": ["main", "child-*"],
   "permissions": [
     "core:default",
-    "opener:default",
     "observer:default"
   ]
 }

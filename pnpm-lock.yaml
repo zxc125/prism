@@ -52,6 +52,28 @@ importers:
         specifier: ^2.1.10
         version: 2.2.12(typescript@5.6.3)
 
+  examples/tauri-demo:
+    dependencies:
+      '@rrweb-demo/observer-tauri':
+        specifier: workspace:*
+        version: link:../../packages/observer-tauri
+      '@tauri-apps/api':
+        specifier: ^2
+        version: 2.11.1
+    devDependencies:
+      '@tauri-apps/cli':
+        specifier: ^2
+        version: 2.11.4
+      rrweb:
+        specifier: ^2.1.0
+        version: 2.1.0
+      typescript:
+        specifier: ~5.6.2
+        version: 5.6.3
+      vite:
+        specifier: ^6.0.3
+        version: 6.4.3(yaml@2.9.0)
+
   examples/web-demo:
     dependencies:
       '@rrweb-demo/observer-sdk':
@@ -79,6 +101,22 @@ importers:
       vite:
         specifier: ^6.0.3
         version: 6.4.3(yaml@2.9.0)
+
+  packages/observer-tauri:
+    dependencies:
+      '@rrweb-demo/observer-sdk':
+        specifier: workspace:*
+        version: link:../observer-sdk
+      '@tauri-apps/api':
+        specifier: ^2
+        version: 2.11.1
+    devDependencies:
+      rrweb:
+        specifier: ^2.1.0
+        version: 2.1.0
+      typescript:
+        specifier: ~5.6.2
+        version: 5.6.3
 
 packages:
 

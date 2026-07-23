@@ -88,7 +88,7 @@ function stopTick() {
 async function startSession() {
   try {
     // start_session 返回的 id 即起始毫秒时间戳，用作计时基准
-    const sid = await invoke<string>("start_session");
+    const sid = await invoke<string>("plugin:observer|start_session");
     startedAt.value = Number(sid);
     elapsedMs.value = 0;
     recording.value = true;
@@ -101,7 +101,7 @@ async function startSession() {
 
 async function stopSession() {
   try {
-    await invoke("stop_session");
+    await invoke("plugin:observer|stop_session");
     stopTick();
     startedAt.value = null;
     elapsedMs.value = 0;
@@ -196,6 +196,16 @@ const webStateText = computed(() => {
   if (!server.value.enabled) return "已停用 · 设置页开启";
   return `监听 ${server.value.addr} · ${webCount.value} 个会话`;
 });
+// tauri 通道：外部 Tauri 应用经同一 HTTP server 上报（source:"tauri"），server 就绪即点亮
+const tauriCount = computed(
+  () => sessions.value.filter((s) => sourceOf(s) === "tauri").length,
+);
+const tauriStateText = computed(() => {
+  if (!server.value) return "读取中";
+  if (!server.value.listening) return "未监听 · 端口占用？";
+  if (!server.value.enabled) return "已停用 · 设置页开启";
+  return `就绪 · ${tauriCount.value} 个会话`;
+});
 const serverStateText = computed(() => {
   if (!server.value) return "读取中";
   if (!server.value.listening) return "未监听";
@@ -279,13 +289,17 @@ onBeforeUnmount(() => {
           <div class="ch-state eyebrow">{{ webStateText }}</div>
         </div>
 
-        <!-- tauri 通道（待接入） -->
-        <div class="channel is-pending" style="--c: var(--src-tauri)">
+        <!-- tauri 通道：外部 Tauri 应用装插件上报，server 就绪即点亮 -->
+        <div
+          class="channel"
+          :class="{ 'is-pending': !webReady }"
+          style="--c: var(--src-tauri)"
+        >
           <div class="ch-head">
-            <span class="ch-dot" aria-hidden="true" />
+            <span class="ch-dot" :class="{ 'is-up': webReady }" aria-hidden="true" />
             <span class="ch-label mono">tauri</span>
           </div>
-          <div class="ch-state eyebrow">待接入 · P5</div>
+          <div class="ch-state eyebrow">{{ tauriStateText }}</div>
         </div>
       </div>
 

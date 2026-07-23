@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, State};
 use tiny_http::{Header, Method, Request, Response, Server};
 
-use crate::storage::{
+use tauri_plugin_observer::storage::{
     append_events_file, append_lifecycle, create_session, finalize_session, now_ms, recordings_root,
 };
 

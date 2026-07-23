@@ -28,7 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 阶段路径（[docs/阶段路径/](docs/阶段路径/)）：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享。
 
-**进度**：P1 ✅（源监控机架 + 会话浏览器 + 诊断信号流）· P2 ✅（error/console/network hook，`type:6` 交错进事件流）· P3 ✅（[sink.ts](src/composables/sink.ts) 抽 `Sink` 接口 + `TauriSink`，useRecorder 不再直接 invoke）· P4 ✅（Web SDK：console 起 `127.0.0.1` 本地 HTTP server `/ingest/*`（[ingest.rs](src-tauri/src/ingest.rs)）+ 打包 [`packages/observer-sdk`](packages/observer-sdk)（`@rrweb-demo/observer-sdk`）走 `HttpSink`，self-obs 与 SDK 共用 `SegmentRecorder`；样例 [`examples/web-demo`](examples/web-demo)）· P5 未启动 · P6 未启动。
+**进度**：P1 ✅（源监控机架 + 会话浏览器 + 诊断信号流）· P2 ✅（error/console/network hook，`type:6` 交错进事件流）· P3 ✅（[sink.ts](src/composables/sink.ts) 抽 `Sink` 接口 + `TauriSink`，useRecorder 不再直接 invoke）· P4 ✅（Web SDK：console 起 `127.0.0.1` 本地 HTTP server `/ingest/*`（[ingest.rs](src-tauri/src/ingest.rs)）+ 打包 [`packages/observer-sdk`](packages/observer-sdk)（`@rrweb-demo/observer-sdk`）走 `HttpSink`，self-obs 与 SDK 共用 `SegmentRecorder`；样例 [`examples/web-demo`](examples/web-demo)）· P5 ✅（抽 [`plugins/tauri-plugin-observer`](plugins/tauri-plugin-observer) 独立 crate：Local（console self-obs，Rust 落盘）+ Remote（外部应用，前端 `HttpSink` 上报）双模式；录制命令搬进插件，console 装 `plugin:observer|*`；[`packages/observer-tauri`](packages/observer-tauri) 提供 `initTauri()` 驱动；样例 [`examples/tauri-demo`](examples/tauri-demo)）· P6 未启动。
 
 ## 架构
 
@@ -47,11 +47,12 @@ recordings/<sessionId>/
 
 关键机制（需结合多文件理解）：
 
-- **会话与段**：`start_session` 置 active 并广播 `recording-session` 事件；各窗口的 `useRecorder`（[src/composables/useRecorder.ts](src/composables/useRecorder.ts)，由 [App.vue](src/App.vue) 挂载）收到后 `invoke("begin_segment")` 分配 segmentId `<label>#<n>` 并启动 rrweb。`player-*` 窗口跳过录制（避免回放被录进会话）。
-- **子窗口关闭=隐藏**：录制期间，子窗口的 `CloseRequested` 被拦截为 `hide()` + 记 `hidden` + `emit_to` segment:stop；再次 `open_window` 复用已隐藏窗口时 `show()` + `emit_to` segment:start 开新段。主窗口关闭不拦截 = 退出进程。见 [src-tauri/src/lib.rs](src-tauri/src/lib.rs) `on_window_event`。
+- **会话与段**：`start_session` 置 active 并广播 `recording-session` 事件；各窗口的 `useRecorder`（[src/composables/useRecorder.ts](src/composables/useRecorder.ts)，由 [App.vue](src/App.vue) 挂载）收到后 `invoke("plugin:observer|begin_segment")` 分配 segmentId `<label>#<n>` 并启动 rrweb。`player-*` 窗口跳过录制（避免回放被录进会话）。
+- **录制协调已抽成插件**：`start_session`/`stop_session`/`is_recording_active`/`begin_segment`/`append_events` 等录制命令与 `on_window_event` 生命周期拦截已搬进独立 crate [`plugins/tauri-plugin-observer`](plugins/tauri-plugin-observer)（`tauri-plugin-observer`）。两种模式：**Local**（console self-obs，Rust 直接落盘到 `appDataDir/recordings/`）与 **Remote**（外部 Tauri 应用，Rust 只管窗口协调 + 事件驱动，前端 `HttpSink` 上报到 console）。console 装插件 Local 模式（`skip_focus_prefix: "player-"`），前端 `TauriSink` 调 `plugin:observer|*` 命令；`list_sessions`/`read_session`/`delete_session`/`open_window`/ingest 仍留 [src-tauri/src/lib.rs](src-tauri/src/lib.rs)。插件命令需在 capabilities 授权 `observer:default`（[default.json](src-tauri/capabilities/default.json)）；console 自定义 command（`open_window` 等）仍无需授权。
+- **子窗口关闭=隐藏**：录制期间，子窗口的 `CloseRequested` 被拦截为 `hide()` + 记 `hidden` + `emit_to` segment:stop；再次 `open_window` 复用已隐藏窗口时 `show()` + 插件 `emit_segment_start_if_active` 开新段。主窗口关闭不拦截 = 退出进程。见插件 [lifecycle.rs](plugins/tauri-plugin-observer/src/lifecycle.rs)（Tauri 2 plugin Builder 无 `on_window_event`，用 `on_window_ready` 给每窗口挂 `Window::on_window_event`）。
 - **跨窗口对齐**：rrweb 事件带绝对 `timestamp`，所有窗口共享墙上时钟，回放时按 `shown.t ~ hidden.t` 区间在主时间轴上同步驱动各 segment 的 `Replayer`。见 [src/composables/usePlayer.ts](src/composables/usePlayer.ts)。
 - **回放**：[src/views/PlayerView.vue](src/views/PlayerView.vue) 用底层 `Replayer`（rrweb-player 是 Vue 2，不能用）+ 自建 Element Plus 控制条，平铺显示当前活跃窗口。
-- 新增的 Tauri command（`start_session`/`stop_session`/`begin_segment`/`append_events`/`list_sessions`/`read_session`/`delete_session`）均已注册在 `generate_handler![]`；自定义 command 无需在 capabilities 里授权。
+- 新增的 Tauri command：console 自有命令（`greet`/`open_window`/`list_sessions`/`read_session`/`delete_session`/`get_ingest_config`/`set_ingest_config`）注册在 [src-tauri/src/lib.rs](src-tauri/src/lib.rs) `generate_handler![]`，无需 capabilities 授权；插件命令（`plugin:observer|*`）注册在插件 `Builder::invoke_handler`，需 `observer:default` 权限。
 
 ### 多窗口系统（横跨前端 + 后端）
 

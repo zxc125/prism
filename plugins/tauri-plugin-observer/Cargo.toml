@@ -1,0 +1,20 @@
+[package]
+name = "tauri-plugin-observer"
+version = "0.1.0"
+description = "本地优先前端观测平台 · Tauri 多窗口录制协调插件"
+edition = "2021"
+license = "MIT"
+links = "tauri-plugin-observer"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dev-dependencies]
+tempfile = "3"

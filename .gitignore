@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Rust / Cargo（各 crate 的编译产物，统一忽略）
+target/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -7,7 +7,7 @@ description: Guidance for the rrweb-based multi-window recording & replay system
 
 本 skill 记录该项目中 rrweb 录制/回放功能的**实现方案**、**当前现状**与**未实现功能**。在修改录制相关代码、排查回放问题或规划新功能前，先通读本 skill，避免破坏已有的跨窗口对齐与分段机制。
 
-> 平台演进方向（本地优先观测平台：外部 web/tauri 观测、导出/标注/分享等）见 `docs/架构/` 与 `docs/阶段路径/`（P5-P6），不在此 skill 重复。Sink 传输抽象（P3）与 Web SDK + 本地接收 server（P4）已落地，见下文。
+> 平台演进方向（本地优先观测平台：外部 web/tauri 观测、导出/标注/分享等）见 `docs/架构/` 与 `docs/阶段路径/`（P6 未启动）。Sink 传输抽象（P3）、Web SDK + 本地接收 server（P4）、Tauri Plugin（P5）已落地，见下文。
 
 ## 实现方案
 
@@ -63,11 +63,13 @@ recordings/<sessionId>/
 
 | 文件 | 职责 |
 | --- | --- |
-| [src-tauri/src/lib.rs](src-tauri/src/lib.rs) | `Session` 状态、录制相关命令、`open_window`、`on_window_event` 生命周期拦截；声明 `storage`/`ingest` 模块、管理 `IngestState`、启动接收 server、注册 `get/set_ingest_config`；session.json 写 `source:"self"` |
-| [src-tauri/src/storage.rs](src-tauri/src/storage.rs) | 存储层（self-obs 命令与 /ingest handler 共用）：`now_ms`/`recordings_root`/`append_lifecycle`/`append_events_file`/`create_session`/`finalize_session` |
-| [src-tauri/src/ingest.rs](src-tauri/src/ingest.rs) | 本地 HTTP 接收 server（tiny_http，串行）：`/ingest/{session,segment,events,lifecycle,session/end}` -> 复用 storage 落盘；`IngestConfig`/`IngestState`、token 鉴权、CORS、配置持久化、`handle_route`（可测试） |
-| [packages/observer-sdk](packages/observer-sdk) | npm 包 `@rrweb-demo/observer-sdk`：`Sink` 接口 + 类型、`HttpSink`/`IndexedDBSink`、信号 hook（`installSignalHooks`）、`SegmentRecorder`、`init()`；self-obs 与外部 SDK 共用 |
-| [src/composables/sink.ts](src/composables/sink.ts) | `TauriSink`（包装 invoke，self-obs）；从 observer-sdk re-export `Sink`/`HttpSink`/`IndexedDBSink` 及类型 |
+| [src-tauri/src/lib.rs](src-tauri/src/lib.rs) | console 应用入口：`open_window`（路由->label、复用窗口调插件 `emit_segment_start_if_active`）、`list_sessions`/`read_session`/`delete_session`（读自身 recordings/）、声明 `ingest` 模块、管理 `IngestState`、启动接收 server、注册 `get/set_ingest_config`；装 `tauri-plugin-observer` Local 模式（`skip_focus_prefix:"player-"`） |
+| [plugins/tauri-plugin-observer](plugins/tauri-plugin-observer) | 独立 crate `tauri-plugin-observer`：`Session` 状态、录制命令（`plugin:observer|*`）、`on_window_ready`+`Window::on_window_event` 生命周期拦截；`Mode::{Local,Remote}`；`storage` 模块（落盘函数，console ingest 复用）；`emit_segment_start_if_active` helper；权限 `observer:default` |
+| [src-tauri/src/ingest.rs](src-tauri/src/ingest.rs) | 本地 HTTP 接收 server（tiny_http，串行）：`/ingest/{session,segment,events,lifecycle,session/end}` -> 复用插件 storage 落盘；`IngestConfig`/`IngestState`、token 鉴权、CORS、配置持久化、`handle_route`（可测试） |
+| [packages/observer-sdk](packages/observer-sdk) | npm 包 `@rrweb-demo/observer-sdk`：`Sink` 接口 + 类型、`HttpSink`（含 `useSessionId` 注入）/`IndexedDBSink`、信号 hook（`installSignalHooks`）、`SegmentRecorder`、`init()`；self-obs / web SDK / tauri plugin 共用 |
+| [packages/observer-tauri](packages/observer-tauri) | npm 包 `@rrweb-demo/observer-tauri`：`initTauri()` Remote 模式驱动--监听插件 `recording-session`/`segment`/`observer-lifecycle` 事件驱动 `SegmentRecorder`，hidden/focus 经 `HttpSink.appendLifecycle` 上报；主窗口 `autoStart` 建 session + `bind_session` 广播 |
+| [examples/tauri-demo](examples/tauri-demo) | P5 验证样例：独立 Tauri 2 应用装插件 Remote 模式，多窗口（main + child-*），`initTauri` 上报到 console |
+| [src/composables/sink.ts](src/composables/sink.ts) | `TauriSink`（包装 `plugin:observer|*` invoke，self-obs）；从 observer-sdk re-export `Sink`/`HttpSink`/`IndexedDBSink` 及类型 |
 | [src/composables/useRecorder.ts](src/composables/useRecorder.ts) | 每窗口录制器：监听会话广播与段事件、`player-*` 跳过；用 SDK 的 `SegmentRecorder`（注入 `TauriSink`）驱动 start/stop，无直接 `invoke` |
 | [src/composables/usePlayer.ts](src/composables/usePlayer.ts) | 回放控制器：加载会话、按区间驱动各 `Replayer`、play/pause/seek/倍速、稳定槽位、spotlight 主窗口（auto focus + 手动）、漂移纠偏、时间轴色带数据、tile 等比缩放（`fitSegment` + `ResizeObserver`）；从 type:6 事件收集诊断信号流（`signals`/`errorMarks`）；导出 `LANE_COLORS` 与 `Signal` 类型并为每个槽位标 `--lane-color` |
 | [src/App.vue](src/App.vue) | 挂载 `useRecorder`，使每个窗口都参与录制 |
@@ -78,7 +80,11 @@ recordings/<sessionId>/
 
 ### Rust 命令清单
 
-`greet`、`open_window`、`start_session`、`stop_session`、`is_recording_active`、`begin_segment`、`append_events`、`list_sessions`、`read_session`、`delete_session`、`get_ingest_config`、`set_ingest_config`。自定义 command 已在 `generate_handler![]` 注册，无需在 capabilities 授权；`listen` 由 `core:default` 允许。`TauriSink` 包装 `begin_segment`/`append_events`/`is_recording_active`（及 startSession/endSession 对应 `start_session`/`stop_session`）。`get/set_ingest_config` 读写 `IngestState`（`enabled`/`port`/`token`，持久化到 `appDataDir/ingest-config.json`）。
+分两类：
+- **console 自有命令**（[src-tauri/src/lib.rs](src-tauri/src/lib.rs) `generate_handler![]`，无需 capabilities 授权）：`greet`、`open_window`、`list_sessions`、`read_session`、`delete_session`、`get_ingest_config`、`set_ingest_config`。
+- **插件命令**（`tauri-plugin-observer` `Builder::invoke_handler`，注册为 `plugin:observer|*`，需 `observer:default` 权限）：`start_session`、`stop_session`、`is_recording_active`、`begin_segment`、`append_events`、`bind_session`（Remote：绑定 server sessionId 并广播）、`session_id`（Remote：子窗口取 sessionId）、`notify_segment_start`（窗口复用 emit segment:start）。
+
+`listen` 由 `core:default` 允许。`TauriSink` 包装 `plugin:observer|begin_segment`/`append_events`/`is_recording_active`（及 startSession/endSession 对应 `plugin:observer|start_session`/`stop_session`）。`get/set_ingest_config` 读写 `IngestState`（`enabled`/`port`/`token`，持久化到 `appDataDir/ingest-config.json`）。
 
 ## 当前现状
 
@@ -100,13 +106,16 @@ recordings/<sessionId>/
 - 会话观测台布局（P1）：MainView 源监控机架（本机/web/tauri 通道）+ 会话浏览器（来源过滤/搜索）；SettingsView 采集/接收/保留配置项。
 - Sink 传输抽象（P3）：`useRecorder` 走 `SegmentRecorder`（SDK）+ 注入 `TauriSink`，self-obs 行为不变；采集核心下沉到 observer-sdk 包。
 - Web SDK + 本地接收 server（P4）：console 启动 tiny_http server 监听 `127.0.0.1:1421`（端口可配），`/ingest/*` 复用 storage 落盘到同一 `recordings/` 结构（外部会话 `source:"web"`，带 `appId`/`env`/...）；token 鉴权 + CORS；`HttpSink` 对接真实后端，批量/重试/sendBeacon 兜底。npm 包 `@rrweb-demo/observer-sdk` 的 `init({appId, endpoint, token, ...})` 供外部 web 应用嵌入；样例见 `examples/web-demo`。`cargo test` 覆盖 ingest 完整会话落盘格式。
+- Tauri Plugin（P5）：录制协调逻辑（Session/segment/窗口生命周期拦截）抽成独立 crate [`plugins/tauri-plugin-observer`](../../plugins/tauri-plugin-observer)，双模式 `Mode::{Local,Remote}`。Local（console self-obs）Rust 落盘、命令注册为 `plugin:observer|*`（`TauriSink` 调用，`observer:default` 权限）；Remote（外部 Tauri 应用）Rust 只协调 + 事件驱动、前端 `HttpSink` 上报，跨窗口 sessionId 由主窗口 `HttpSink.startSession` 取得后经 `bind_session` 广播共享。Tauri 2 plugin Builder 无 `on_window_event`，用 `on_window_ready` 给每窗口挂 `Window::on_window_event`。JS 驱动 [`packages/observer-tauri`](../../packages/observer-tauri) `initTauri()`（监听 `recording-session`/`segment`/`observer-lifecycle` 驱动 `SegmentRecorder`，hidden/focus 经 `HttpSink.appendLifecycle` 上报）；样例 [`examples/tauri-demo`](../../examples/tauri-demo)。console 装 Local 模式回归正常，MainView tauri 通道点亮。
 
 ### 编译验证
 
-- `cargo check` / `cargo test`（src-tauri 内）通过（ingest 落盘格式有单测）。
+- `cargo check` / `cargo test`（src-tauri 内）通过（ingest 落盘格式有单测）；插件 crate 作为 path 依赖一并编译。
+- `cargo check`（`examples/tauri-demo/src-tauri` 内）通过（Remote 模式插件集成）。
 - `pnpm exec vue-tsc --noEmit` 通过。
 - `pnpm build`（含 vite 构建）通过。
 - `pnpm --filter @rrweb-demo/observer-sdk build` 产 `dist/index.js`；`examples/web-demo` `tsc --noEmit` 通过。
+- `pnpm --filter @rrweb-demo/observer-tauri typecheck`、`pnpm --filter tauri-demo typecheck` 通过。
 
 ### 运行时实测
 
@@ -123,6 +132,7 @@ recordings/<sessionId>/
 - 漂移纠偏的实际收敛效果、`play(offset)` 在长事件流上 re-seek 的延迟。
 - 录制中关闭子窗口的拦截时序、`emit_to` 定向事件是否被目标窗口稳定接收。
 - HttpSink 已对接 P4 本地 server（端到端 E2E 仍待跑：web demo 上报 -> console 列表 -> 回放）；IndexedDBSink 独立回放读取路径仍待补。
+- P5 E2E 仍待跑：`examples/tauri-demo` 装插件 Remote 模式 -> console 列表出现 `source:"tauri"` 会话 -> 多窗口对齐回放正确；Remote 模式窗口关闭=隐藏（非主窗口）的拦截时序、`bind_session` 跨窗口 sessionId 广播、hidden/focus 经 HttpSink 上报是否齐全。
 
 ### 已知 MVP 限制
 
@@ -150,8 +160,8 @@ recordings/<sessionId>/
 - **新增录制配置**（采样、遮罩等）：改 `useRecorder.ts` 的 `record({ emit, ...options })` 调用。诊断信号 hook 在 `installSignalHooks`（error/console/network），新增信号类型在此扩展并对应 `usePlayer` 的 `Signal` 类型；network body/headers 默认关（PII），SettingsView 的开关待接线。
 - **新增传输后端**：实现 `Sink` 接口（见 observer-sdk 的 `sinks.ts`），注入 `useRecorder(sink)` 或外部采集器。`HttpSink` 已对接 P4 server（endpoint/token 即 console 设置页的接入点/token；可加退避/容量上限增强）；`IndexedDBSink` 的独立回放读取路径待补。
 - **新增会话级元数据**：扩展 `session.json` 写入字段 + `list_sessions`/`read_session` 读取。
-- **新增窗口生命周期事件**：在 `on_window_event` 增 match 分支，`append_lifecycle` 落 windows.jsonl；回放侧 `usePlayer` 解析新 type。外部 SDK 走 `sink.appendLifecycle` 上报。
-- **新增 Rust 命令**：在 `lib.rs` 加 `#[tauri::command]` 并注册到 `generate_handler![]`；自定义命令无需改 capabilities。
+- **新增窗口生命周期事件**：在插件 [lifecycle.rs](../../plugins/tauri-plugin-observer/src/lifecycle.rs) 的 `handle_window_event` 增 match 分支；Local 模式 `append_lifecycle` 落 windows.jsonl，Remote 模式 emit 事件交前端 `HttpSink.appendLifecycle` 上报。回放侧 `usePlayer` 解析新 type。
+- **新增 Rust 命令**：console 自有命令在 [src-tauri/src/lib.rs](../../src-tauri/src/lib.rs) 加 `#[tauri::command]` 并注册到 `generate_handler![]`（无需 capabilities 授权）；插件命令在 [commands.rs](../../plugins/tauri-plugin-observer/src/commands.rs) 加、注册到插件 `Builder::invoke_handler`、并在 [build.rs](../../plugins/tauri-plugin-observer/build.rs) 的 `COMMANDS` 追加（生成 `allow-<cmd>` 权限）、按需加入 `permissions/default.toml`，调用方 capabilities 需 `observer:default`（或对应 allow 权限）。
 - **新增带新 label 模式的路由**：同步改 [src-tauri/capabilities/default.json](src-tauri/capabilities/default.json) 的 `windows` glob，否则窗口缺权限。
 - **新增窗口轨道色**：在 `usePlayer.ts` 的 `LANE_COLORS` 数组追加色值，时间轴色带与对应磁贴头圆点同时生效；勿在视图里写临时色值。新增**来源色**走 `theme.css` 的 `--src-*`（勿复用 lane 色做来源语义）。
 

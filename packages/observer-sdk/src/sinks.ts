@@ -47,6 +47,15 @@ export class HttpSink implements Sink {
     return this.sessionId;
   }
 
+  /**
+   * 注入外部已存在的 sessionId（不调 /ingest/session），用于 Tauri 多窗口：
+   * 主窗口 startSession 拿到 sessionId 后经插件广播，子窗口收到后用此方法注入共享。
+   */
+  useSessionId(sessionId: string): void {
+    this.sessionId = sessionId;
+    this.startAutoFlush();
+  }
+
   async beginSegment(label?: string): Promise<string> {
     const segmentId = `${label ?? "web"}#${++this.segCounter}`;
     await this.post("/ingest/segment", {

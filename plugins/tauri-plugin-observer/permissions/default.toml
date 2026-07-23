@@ -1,0 +1,12 @@
+[default]
+description = "Observer 插件默认权限：允许调用全部录制协调命令"
+permissions = [
+    "allow-start-session",
+    "allow-stop-session",
+    "allow-is-recording-active",
+    "allow-begin-segment",
+    "allow-append-events",
+    "allow-bind-session",
+    "allow-session-id",
+    "allow-notify-segment-start",
+]

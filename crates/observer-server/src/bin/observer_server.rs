@@ -7,10 +7,15 @@
 //!
 //! # 多租户（P9）
 //! observer-server --bind 0.0.0.0:8080 --data-dir ./recordings --tenants-file ./tenants.json
+//!
+//! # 浏览器化托管（P10）：单二进制零安装，浏览器开 http://host:8080
+//! observer-server --bind 0.0.0.0:8080 --data-dir ./recordings \
+//!   --tenants-file ./tenants.json --web-dir ./web
 //! ```
 //!
 //! 也可用环境变量：`OBSERVER_BIND` / `OBSERVER_DATA_DIR` / `OBSERVER_TOKEN` /
-//! `OBSERVER_TENANTS_FILE`。TLS 建议由反代（nginx/caddy）终止，server 本身只跑 HTTP。
+//! `OBSERVER_TENANTS_FILE` / `OBSERVER_WEB_DIR`。TLS 建议由反代（nginx/caddy）终止，
+//! server 本身只跑 HTTP。
 
 use std::path::PathBuf;
 
@@ -21,6 +26,7 @@ fn main() {
     let data_dir = PathBuf::from(arg_or_env("data-dir", "OBSERVER_DATA_DIR", "recordings"));
     let token = arg_or_env("token", "OBSERVER_TOKEN", "");
     let tenants_file = arg_or_env_opt("tenants-file", "OBSERVER_TENANTS_FILE");
+    let web_dir = arg_or_env_opt("web-dir", "OBSERVER_WEB_DIR");
 
     if std::env::args().any(|a| a == "--help" || a == "-h") {
         eprintln!("observer-server - 自托管前端观测 server");
@@ -32,9 +38,11 @@ fn main() {
         eprintln!("  --data-dir <path>       会话存储目录（默认 ./recordings）");
         eprintln!("  --token <key>           单租户 API key（Authorization: Bearer <key>，留空 = 不鉴权）");
         eprintln!("  --tenants-file <path>   多租户配置文件（启用多租户模式，覆盖 --token）");
+        eprintln!("  --web-dir <path>        console 静态托管目录（pnpm build 产物，启用浏览器访问）");
         eprintln!("  -h, --help              显示帮助");
         eprintln!();
-        eprintln!("环境变量: OBSERVER_BIND / OBSERVER_DATA_DIR / OBSERVER_TOKEN / OBSERVER_TENANTS_FILE");
+        eprintln!("环境变量: OBSERVER_BIND / OBSERVER_DATA_DIR / OBSERVER_TOKEN /");
+        eprintln!("         OBSERVER_TENANTS_FILE / OBSERVER_WEB_DIR");
         eprintln!("TLS 建议由反代（nginx/caddy）终止，server 本身只跑 HTTP。");
         return;
     }
@@ -45,6 +53,17 @@ fn main() {
         std::process::exit(1);
     }
 
+    // P10：web_dir 校验：若传入但不存在，告警并忽略（不致命，server 仍可跑 API）
+    let web_dir = web_dir.filter(|p| {
+        let pb = PathBuf::from(p);
+        if !pb.exists() {
+            eprintln!("[observer-server] --web-dir {} 不存在，跳过静态托管", pb.display());
+            false
+        } else {
+            true
+        }
+    });
+
     let config = ServerConfig {
         bind: bind.clone(),
         data_dir,
@@ -52,6 +71,7 @@ fn main() {
         enabled: true,
         tenants_file: tenants_file.map(PathBuf::from),
         retention: None,
+        web_dir: web_dir.map(PathBuf::from),
     };
 
     eprintln!("[observer-server] 绑定 {bind}");
@@ -61,6 +81,9 @@ fn main() {
         eprintln!("[observer-server] 模式: 单租户，鉴权关闭（无 token）");
     } else {
         eprintln!("[observer-server] 模式: 单租户，鉴权开启（Bearer token）");
+    }
+    if let Some(wd) = config.web_dir.as_ref() {
+        eprintln!("[observer-server] 静态托管: {}（浏览器开 http://<bind>）", wd.display());
     }
 
     let server = ObserverServer::new(config);

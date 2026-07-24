@@ -12,7 +12,7 @@ use observer_storage::{
 };
 use tauri_plugin_observer::storage::recordings_root;
 
-/// 由路由推导窗口 label：/settings -> settings，/player/abc -> player-abc，/ -> main。
+/// 由路由推导窗口 label：/settings -> settings，/s/abc -> s-abc，/ -> main。
 /// 同路由 = 同 label = 单实例（聚焦已有）；路由带不同 :id = 多实例。
 fn window_label(route: &str) -> String {
     let label = route.trim_start_matches('/').replace('/', "-");
@@ -42,10 +42,14 @@ fn open_window(app: AppHandle, route: String) -> Result<String, String> {
     }
 
     // 按路由首段决定标题与尺寸
+    // P10：player 走 /s/:id（in-app 路由为主，open_window 仅用于「新窗口打开」）
     let segment = route.split('/').nth(1).unwrap_or("");
     let (title, width, height) = match segment {
         "settings" => ("设置", 480.0, 640.0),
+        "s" => ("播放器", 960.0, 600.0),
         "player" => ("播放器", 960.0, 600.0),
+        "live" => ("实时观测", 720.0, 640.0),
+        "tenants" => ("租户", 640.0, 600.0),
         _ => ("RRWeb Demo", 800.0, 600.0),
     };
     // 不在 URL 里带 hash：WebviewUrl::App 接收的是 PathBuf，Windows WebView2 上

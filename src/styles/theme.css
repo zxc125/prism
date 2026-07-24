@@ -1,49 +1,61 @@
 /* ============================================================
-   replay · session studio - design system
-   A warm-dark "cutting room" control surface for session replay.
-   Palette + type are tuned to the recording / timecode vernacular:
-   monospace timecodes, oscilloscope-amber accent, oxblood REC.
+   replay · observer console 2.0 - design system
+   现代科技感：中性偏冷暗底 + 琥珀信号主色 + 冷青数据辅色 + glow/细线。
+   保留身份锚点：琥珀（信号/激活）、牛血红（REC/危险）、等宽字体（技术值）。
+   摒弃：复古暖褐胶片底、装饰性 mono 滥用、厚边框重面板。
    ============================================================ */
 
 :root {
-  /* --- palette: warm cutting-room --- */
-  --ink:        #14110D;  /* page floor */
-  --ink-2:      #181410;  /* sunken header */
-  --slate:      #1F1B16;  /* panel surface */
-  --slate-2:    #2A251E;  /* lifted surface / hover */
-  --slate-3:    #342D24;  /* active / pressed */
-  --hair:       #3A332A;  /* hairline border */
-  --hair-soft:  #2A241D;
-  --bone:       #E8E2D4;  /* primary text / leader film */
-  --bone-dim:   #B8B0A2;  /* regular text */
-  --ash:        #8A8378;  /* secondary text / captions */
-  --ash-deep:   #6A6358;  /* placeholder */
-  --amber:      #E8A33D;  /* primary accent: playhead / active */
-  --amber-soft: #F0B85B;  /* hover lift */
-  --amber-deep: #A07029;
-  --amber-tint: #2A2113;  /* subtle amber bg (dark tint) */
-  --oxblood:    #B5383A;  /* REC / danger */
-  --oxblood-soft:#D05858; /* danger readable on dark */
+  /* --- palette: 深空中性偏冷暗底 --- */
+  --ink:        #0A0C10;  /* page floor · 深空感 */
+  --ink-2:      #0E1117;  /* sunken / header strip */
+  --slate:      #11141A;  /* panel surface */
+  --slate-2:    #181C24;  /* lifted surface / hover */
+  --slate-3:    #1F242E;  /* active / pressed */
+  --hair:       #1F242E;  /* hairline border · 细线 */
+  --hair-soft:  #161A22;
+  --bone:       #E6EAF0;  /* primary text · 偏冷白 */
+  --bone-dim:   #B8C0CC;  /* regular text */
+  --ash:        #8B94A3;  /* secondary text / captions */
+  --ash-deep:   #5C6573;  /* placeholder / dim */
 
-  /* lane palette: filmic, distinguishable on dark */
-  --lane-1: #E8A33D;
-  --lane-2: #C75B5B;
-  --lane-3: #5BC0BE;
+  /* --- 信号主色：琥珀（收敛为信号 / 激活 / 实时数据流） --- */
+  --amber:      #F0A83D;  /* playhead / active / signal */
+  --amber-soft: #FFC062;  /* hover lift */
+  --amber-deep: #B07A28;
+  --amber-tint: rgba(240, 168, 61, 0.12);  /* 激活态背景 tint */
+  --amber-glow: rgba(240, 168, 61, 0.22);  /* 激活态发光 */
+
+  /* --- 数据辅色：冷青 teal（网络 / 信息流 / 可视化，与琥珀暖冷对比） --- */
+  --teal:       #4DD0C8;
+  --teal-soft:  #6FE0D8;
+  --teal-deep:  #2EA39C;
+  --teal-tint:  rgba(77, 208, 200, 0.10);
+
+  /* --- 危险色：牛血红（REC / 删除 / error） --- */
+  --oxblood:    #E5484D;
+  --oxblood-soft: #FF6B70;
+  --oxblood-tint: rgba(229, 72, 77, 0.12);
+
+  /* lane palette: 在冷暗底上可辨，数据可视化轨道色 */
+  --lane-1: #F0A83D;  /* amber */
+  --lane-2: #E5484D;  /* oxblood */
+  --lane-3: #4DD0C8;  /* teal */
   --lane-4: #B084CC;
   --lane-5: #8AB36A;
   --lane-6: #D98E50;
   --lane-7: #6FA8DC;
 
-  /* --- 来源色（平台观测：复用 lane 调色板，每来源稳定身份色） --- */
+  /* --- 来源色（平台观测：每来源稳定身份色） --- */
   --src-self:  var(--amber);   /* 本机自录 */
-  --src-web:   #6FA8DC;        /* = --lane-7 */
+  --src-web:   var(--teal);    /* web 通道 · 数据辅色 */
   --src-tauri: #8AB36A;        /* = --lane-5 */
 
   /* --- 诊断信号类型色 --- */
-  --sig-log: var(--ash);         /* console.log/info/debug */
-  --sig-warn: var(--amber);      /* console.warn */
-  --sig-err: var(--oxblood-soft);/* console.error / error 事件 */
-  --sig-net: #6FA8DC;            /* network */
+  --sig-log: var(--ash);            /* console.log/info/debug */
+  --sig-warn: var(--amber);         /* console.warn */
+  --sig-err: var(--oxblood-soft);   /* console.error / error 事件 */
+  --sig-net: var(--teal);           /* network · 数据辅色 */
 
   /* --- type --- */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
@@ -53,71 +65,76 @@
 
   --fs-xs: 11px;
   --fs-sm: 12px;
-  --fs-base: 14px;
-  --fs-md: 15px;
-  --fs-lg: 18px;
-  --fs-xl: 22px;
-  --fs-2xl: 30px;
+  --fs-base: 13px;
+  --fs-md: 14px;
+  --fs-lg: 17px;
+  --fs-xl: 21px;
+  --fs-2xl: 28px;
 
-  --radius: 4px;
-  --radius-sm: 3px;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --radius-lg: 10px;
+
+  /* elevation: 微妙 shadow，取代厚边框重面板 */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
-/* ---- Element Plus token overrides (dark control surface) ----
+/* ---- Element Plus token overrides (modern tech surface) ----
    :root:root doubles specificity so these win over EP's bundled
    :root vars regardless of stylesheet load order. */
 :root:root {
   color-scheme: dark;
 
-  /* primary = amber, with a dark-tinted light ramp (mixed toward the
-     surface, not toward white) so subtle backgrounds read on dark. */
-  --el-color-primary: #E8A33D;
-  --el-color-primary-light-3: #C98A2E;
+  /* primary = amber signal */
+  --el-color-primary: #F0A83D;
+  --el-color-primary-light-3: #D4902F;
   --el-color-primary-light-5: #A07029;
   --el-color-primary-light-7: #6E4D1C;
   --el-color-primary-light-8: #4A3414;
-  --el-color-primary-light-9: #2A2113;
-  --el-color-primary-dark-2: #F0B85B;
+  --el-color-primary-light-9: rgba(240, 168, 61, 0.10);
+  --el-color-primary-dark-2: #FFC062;
 
   --el-color-success: #8AB36A;
   --el-color-success-light-3: #6E9455;
   --el-color-success-light-5: #547040;
   --el-color-success-light-7: #3A4D2C;
   --el-color-success-light-8: #2A3820;
-  --el-color-success-light-9: #1E2A17;
+  --el-color-success-light-9: rgba(138, 179, 106, 0.10);
   --el-color-success-dark-2: #A3C788;
 
-  --el-color-warning: #E8A33D;
-  --el-color-warning-light-3: #C98A2E;
+  --el-color-warning: #F0A83D;
+  --el-color-warning-light-3: #D4902F;
   --el-color-warning-light-5: #A07029;
   --el-color-warning-light-7: #6E4D1C;
   --el-color-warning-light-8: #4A3414;
-  --el-color-warning-light-9: #2A2113;
-  --el-color-warning-dark-2: #F0B85B;
+  --el-color-warning-light-9: rgba(240, 168, 61, 0.10);
+  --el-color-warning-dark-2: #FFC062;
 
-  --el-color-danger: #D05858;
-  --el-color-danger-light-3: #B5383A;
-  --el-color-danger-light-5: #8A2D2F;
-  --el-color-danger-light-7: #5E2222;
+  --el-color-danger: #E5484D;
+  --el-color-danger-light-3: #C73A3F;
+  --el-color-danger-light-5: #9A2D31;
+  --el-color-danger-light-7: #6E2222;
   --el-color-danger-light-8: #451C1C;
-  --el-color-danger-light-9: #2E1818;
-  --el-color-danger-dark-2: #E07878;
+  --el-color-danger-light-9: rgba(229, 72, 77, 0.10);
+  --el-color-danger-dark-2: #FF6B70;
 
-  --el-color-error: #D05858;
-  --el-color-error-light-3: #B5383A;
-  --el-color-error-light-5: #8A2D2F;
-  --el-color-error-light-7: #5E2222;
+  --el-color-error: #E5484D;
+  --el-color-error-light-3: #C73A3F;
+  --el-color-error-light-5: #9A2D31;
+  --el-color-error-light-7: #6E2222;
   --el-color-error-light-8: #451C1C;
-  --el-color-error-light-9: #2E1818;
-  --el-color-error-dark-2: #E07878;
+  --el-color-error-light-9: rgba(229, 72, 77, 0.10);
+  --el-color-error-dark-2: #FF6B70;
 
-  --el-color-info: #8A8378;
-  --el-color-info-light-3: #6E685E;
-  --el-color-info-light-5: #524D45;
-  --el-color-info-light-7: #383530;
-  --el-color-info-light-8: #2A2723;
-  --el-color-info-light-9: #1F1D1A;
-  --el-color-info-dark-2: #A39C90;
+  --el-color-info: #8B94A3;
+  --el-color-info-light-3: #6E7682;
+  --el-color-info-light-5: #525964;
+  --el-color-info-light-7: #383D45;
+  --el-color-info-light-8: #2A2E34;
+  --el-color-info-light-9: rgba(139, 148, 163, 0.10);
+  --el-color-info-dark-2: #A8B0BC;
 
   /* surfaces */
   --el-bg-color: var(--slate);
@@ -125,8 +142,8 @@
   --el-bg-color-overlay: var(--slate-2);
   --el-fill-color: var(--slate-2);
   --el-fill-color-light: var(--hair-soft);
-  --el-fill-color-lighter: #241F19;
-  --el-fill-color-extra-light: #1A1611;
+  --el-fill-color-lighter: #141821;
+  --el-fill-color-extra-light: #10131A;
   --el-fill-color-blank: var(--slate);
   --el-fill-color-dark: var(--slate-3);
   --el-fill-color-darker: var(--slate-3);
@@ -136,22 +153,22 @@
   --el-text-color-regular: var(--bone-dim);
   --el-text-color-secondary: var(--ash);
   --el-text-color-placeholder: var(--ash-deep);
-  --el-text-color-disabled: #4A443C;
+  --el-text-color-disabled: #3A4049;
 
-  /* borders */
+  /* borders · 细 hairline */
   --el-border-color: var(--hair);
   --el-border-color-light: var(--hair-soft);
-  --el-border-color-lighter: #2A241D;
-  --el-border-color-extra-light: #241F19;
-  --el-border-color-dark: #4A4138;
+  --el-border-color-lighter: #14181F;
+  --el-border-color-extra-light: #10131A;
+  --el-border-color-dark: #2A3038;
   --el-border-color-darker: var(--hair);
 
   /* shadows / masks */
-  --el-box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --el-box-shadow-light: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --el-mask-color: rgba(20, 17, 13, 0.72);
+  --el-box-shadow: var(--shadow-3);
+  --el-box-shadow-light: var(--shadow-2);
+  --el-mask-color: rgba(10, 12, 16, 0.78);
   --el-disabled-bg-color: var(--slate-2);
-  --el-disabled-text-color: #4A443C;
+  --el-disabled-text-color: #3A4049;
   --el-disabled-border-color: var(--hair-soft);
 
   /* table */
@@ -204,18 +221,18 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* monospace voice - timecodes, data, lane labels */
+/* mono voice - 严格限定：时间码 / ID / 技术值（科技嗓音） */
 .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
-/* eyebrow - control-surface section marker */
+/* eyebrow - 控制面 section marker */
 .eyebrow {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ash);
 }
@@ -224,15 +241,15 @@ body {
 :focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
-/* scrollbars */
+/* scrollbars · 极细 */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--hair) transparent;
 }
-*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
   background: var(--hair);
@@ -247,7 +264,7 @@ body {
 .el-button {
   font-family: var(--font-sans);
   font-weight: 500;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
 }
 /* light accents need dark ink text for contrast */
 .el-button--primary,
@@ -269,6 +286,10 @@ body {
   --el-button-text-color: #fff;
   --el-button-hover-text-color: #fff;
   --el-button-active-text-color: #fff;
+  --el-button-bg-color: var(--oxblood);
+  --el-button-border-color: var(--oxblood);
+  --el-button-hover-bg-color: var(--oxblood-soft);
+  --el-button-hover-border-color: var(--oxblood-soft);
 }
 .el-button--default {
   --el-button-text-color: var(--bone-dim);
@@ -289,7 +310,7 @@ body {
 .el-table th.el-table__cell {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  letter-spacing: 0.12em;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
   font-weight: 500;
   background: var(--ink-2) !important;
@@ -333,6 +354,17 @@ body {
   border-radius: var(--radius);
 }
 .el-message { border-width: 1px; }
+
+/* tabs · 现代科技感：底部琥珀线指示 */
+.el-tabs__item {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--ash);
+}
+.el-tabs__item.is-active { color: var(--bone); }
+.el-tabs__item:hover { color: var(--bone-dim); }
+.el-tabs__active-bar { background-color: var(--amber); }
+.el-tabs__nav-wrap::after { background-color: var(--hair-soft); }
 
 /* respect reduced motion */
 @media (prefers-reduced-motion: reduce) {

@@ -5,9 +5,10 @@
  * 设置页切到 [`HttpBackend`] 后所有读/管理走云端 HTTP。**录制 Sink 与 Backend 正交**——
  * 录制仍走 HttpSink（指向本地或云端），Backend 只管读/管理。
  *
- * 见 docs/阶段路径/P8-云端server抽取.md。
+ * 见 docs/阶段路径/P8-云端server抽取.md / P10-浏览器版console.md。
  */
 import { invoke } from "@tauri-apps/api/core";
+import { isTauri } from "./tauri";
 
 // ---- 共享类型（与 SDK / Rust 侧对齐）----
 
@@ -63,6 +64,22 @@ export interface Bundle {
   annotations: Annotation[];
 }
 
+/** 限流配置（服务端 RateLimitConfig 镜像）。 */
+export interface RateLimitConfig {
+  maxRpm?: number | null;
+}
+
+/** GET /whoami 返回：多租户带 tenant 上下文 + 配额；单租户仅 multiTenant:false。 */
+export interface Whoami {
+  multiTenant: boolean;
+  tenantId?: string;
+  appIds?: string[];
+  quotaBytes?: number | null;
+  usageBytes?: number;
+  rateLimit?: RateLimitConfig;
+  retention?: { maxAgeDays?: number | null; maxSessions?: number | null };
+}
+
 // ---- Backend 接口 ----
 
 export interface Backend {
@@ -77,6 +94,8 @@ export interface Backend {
   /** 从本地文件路径导入（Rust 侧读文件，避免大 JSON 过 IPC）。返回新 session id。 */
   importBundlePath(path: string): Promise<string>;
   deleteSession(id: string): Promise<void>;
+  /** P10：tenant 上下文 + 配额余量（顶栏 / /tenants 用）。 */
+  whoami(): Promise<Whoami>;
 }
 
 // ---- TauriBackend：invoke 本地命令（默认）----
@@ -108,6 +127,11 @@ export class TauriBackend implements Backend {
   }
   async deleteSession(id: string) {
     await invoke("delete_session", { id });
+  }
+  async whoami(): Promise<Whoami> {
+    // Tauri 桌面默认隐式单租户：console 内嵌 server 不暴露 tenant 上下文。
+    // 浏览器化场景由 HttpBackend 处理；这里返回单租户标记，顶栏据此隐藏 tenant 切换器。
+    return { multiTenant: false };
   }
 }
 
@@ -150,12 +174,19 @@ export class HttpBackend implements Backend {
     return res.sessionId;
   }
   async importBundlePath(path: string) {
-    // console 仍是 Tauri app：用 Rust 命令读文件内容，再上传云端（避免大 JSON 过 IPC）
+    // Tauri 桌面：用 Rust 命令读文件内容再上传云端（避免大 JSON 过 IPC）。
+    // 浏览器模式不应走到这里（pickBundleFile 已直接返回 content，调 importBundleContent）。
+    if (!isTauri()) {
+      throw new Error("浏览器模式请用 importBundleContent");
+    }
     const content = await invoke<string>("read_text_file", { path });
     return this.importBundleContent(content);
   }
   async deleteSession(id: string) {
     await this.del(`/sessions/${enc(id)}`);
+  }
+  async whoami(): Promise<Whoami> {
+    return this.get<Whoami>("/whoami");
   }
 
   private headers(): Record<string, string> {
@@ -239,17 +270,45 @@ export function saveBackendConfig(cfg: BackendConfig) {
 let _backend: Backend | null = null;
 let _backendKey = "";
 
-/** 取当前 Backend（按 localStorage 配置缓存，配置变更后下次调用生效）。 */
+/** 取当前 Backend（按 localStorage 配置缓存，配置变更后下次调用生效）。
+ *  P10：浏览器（非 Tauri）强制 HttpBackend--无本地 invoke 可用；若未配 endpoint
+ *  返回一个会抛错的占位，LoginGate 拦截后用户必须先填 endpoint+key。 */
 export function getBackend(): Backend {
   const cfg = loadBackendConfig();
   const key = `${cfg.mode}|${cfg.endpoint}|${cfg.apiKey}`;
   if (_backend && key === _backendKey) return _backend;
-  _backend =
-    cfg.mode === "http" && cfg.endpoint
-      ? new HttpBackend({ endpoint: cfg.endpoint, apiKey: cfg.apiKey })
-      : new TauriBackend();
+  if (!isTauri()) {
+    // 浏览器：必须有 endpoint+key 才能工作；LoginGate 保证已配置
+    if (cfg.endpoint) {
+      _backend = new HttpBackend({ endpoint: cfg.endpoint, apiKey: cfg.apiKey });
+    } else {
+      _backend = new UnconfiguredBackend();
+    }
+  } else {
+    _backend =
+      cfg.mode === "http" && cfg.endpoint
+        ? new HttpBackend({ endpoint: cfg.endpoint, apiKey: cfg.apiKey })
+        : new TauriBackend();
+  }
   _backendKey = key;
   return _backend;
+}
+
+/** 浏览器未配置时占位：所有方法抛错，提示先登录。 */
+class UnconfiguredBackend implements Backend {
+  private boom() {
+    return Promise.reject(new Error("未配置云端连接，请先登录"));
+  }
+  listSessions() { return this.boom(); }
+  readSession() { return this.boom(); }
+  listAnnotations() { return this.boom(); }
+  saveAnnotations() { return this.boom(); }
+  updateSessionMeta() { return this.boom(); }
+  exportSession() { return this.boom(); }
+  importBundleContent() { return this.boom(); }
+  importBundlePath() { return this.boom(); }
+  deleteSession() { return this.boom(); }
+  async whoami(): Promise<Whoami> { return { multiTenant: false }; }
 }
 
 /** 强制重置缓存（设置页保存后调用，确保下次 getBackend 重建）。 */

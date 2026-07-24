@@ -24,6 +24,7 @@ use std::time::Duration;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tiny_http::{Header, Method, Request, Response, Server};
 
 pub use quota::QuotaTracker;
@@ -47,6 +48,10 @@ pub struct ServerConfig {
     /// 单租户模式的保留策略（多租户时 per-tenant 覆盖）。
     #[serde(default)]
     pub retention: Option<RetentionPolicy>,
+    /// P10：console 静态托管目录（`pnpm build` 产物）。None = 不托管，纯 API server。
+    /// 启用后未命中 API 的请求 fallback 到静态文件（SPA 模式）。
+    #[serde(default)]
+    pub web_dir: Option<PathBuf>,
 }
 
 impl ServerConfig {
@@ -59,6 +64,7 @@ impl ServerConfig {
             enabled,
             tenants_file: None,
             retention: None,
+            web_dir: None,
         }
     }
 }
@@ -350,6 +356,17 @@ fn handle_request(state: &Arc<Mutex<Inner>>, mut req: Request) -> Result<(), Str
         return Ok(());
     }
 
+    // P10：静态文件服务必须在租户鉴权之前--浏览器加载登录页 + JS/CSS 资产时尚无
+    // bearer key（key 是登录后才有的）。只有 API 路由（/ingest /sessions /whoami）
+    // 才需要鉴权；其余请求若启用了 web_dir 则直接 fallback 到静态文件（无 auth）。
+    if !is_api_route(&url, &method) {
+        if let Some(web_dir) = config.web_dir.as_ref() {
+            return serve_static(req, web_dir, &url, accept_gzip).map_err(|e| e.to_string());
+        }
+        respond(req, 404, Some(err_json("unknown route")), false).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
     // 解析租户
     let tenant = match resolve_tenant(&config, &registry, &req) {
         Ok(t) => t,
@@ -393,12 +410,32 @@ fn handle_request(state: &Arc<Mutex<Inner>>, mut req: Request) -> Result<(), Str
             Ok(r) => r,
             Err((st, msg)) => (st, Some(err_json(&msg))),
         }
+    } else if url == "/whoami" && method == "GET" {
+        // P10：tenant 上下文 + 配额余量。多租户返回 tenant 信息 + usageBytes；
+        // 单租户返回 { multiTenant: false }，前端据此隐藏 tenant 上下文。
+        match &tenant {
+            Some(t) => {
+                let usage_bytes = quota.usage(&t.tenant_id, &root);
+                let info = json!({
+                    "multiTenant": true,
+                    "tenantId": t.tenant_id,
+                    "appIds": t.app_ids,
+                    "quotaBytes": t.quota_bytes,
+                    "usageBytes": usage_bytes,
+                    "rateLimit": t.rate_limit,
+                    "retention": t.retention,
+                });
+                (200, Some(info.to_string()))
+            }
+            None => (200, Some(json!({ "multiTenant": false }).to_string())),
+        }
     } else if url.starts_with("/sessions") {
         match handle_read_route(&root, &method, &url, body, tenant.as_ref()) {
             Ok(r) => r,
             Err((st, msg)) => (st, Some(err_json(&msg))),
         }
     } else {
+        // 不应到达：is_api_route 已在鉴权前过滤，非 API 请求走静态 fallback。
         (404, Some(err_json("unknown route")))
     };
 
@@ -412,4 +449,164 @@ fn handle_request(state: &Arc<Mutex<Inner>>, mut req: Request) -> Result<(), Str
     }
 
     respond(req, status, out, accept_gzip).map_err(|e| e.to_string())
+}
+
+// ---- P10：静态文件服务（SPA 托管）----
+
+/// 判断是否为 API 路由（需要鉴权）。其余请求在 web_dir 启用时走静态 fallback。
+/// 注意：`/sessions` 用 `starts_with` 覆盖 `/sessions/:id/annotations` 等子路径。
+fn is_api_route(url: &str, method: &str) -> bool {
+    url.starts_with("/ingest/")
+        || url.starts_with("/sessions")
+        || (url == "/whoami" && method == "GET")
+}
+
+/// 由扩展名推 MIME 类型。仅列 console 构建产物涉及的常见类型。
+fn mime_for(ext: &str) -> &'static str {
+    match ext {
+        "html" => "text/html; charset=utf-8",
+        "js" => "application/javascript; charset=utf-8",
+        "mjs" => "application/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "json" => "application/json; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "ico" => "image/x-icon",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "map" => "application/json; charset=utf-8",
+        "webp" => "image/webp",
+        _ => "application/octet-stream",
+    }
+}
+
+/// 把请求 URL 规范化到 web_dir 下的安全文件路径。
+///
+/// 防穿越：去掉 query、拒绝 `..` 段、禁止绝对路径。仅允许根 `index.html` 或
+/// `assets/` 子目录下的文件。未明确指向文件的请求回退到 `index.html`（SPA）。
+///
+/// 安全检查走**词法**比较（不依赖 canonicalize，因目标文件可能不存在）：
+/// 用 `Path::components` 取出标准化段，遇 `..` 一律拒绝。
+fn resolve_web_path(web_dir: &Path, url: &str) -> Option<PathBuf> {
+    let path = url.split('?').next().unwrap_or(url);
+    let rel = path.trim_start_matches('/');
+    if rel.is_empty() {
+        return Some(web_dir.join("index.html"));
+    }
+    // 任何 `..` 段或反斜杠一律拒绝（词性检查，不依赖文件存在）
+    if rel.split('/').any(|s| s == ".." || s.contains('\\')) {
+        return None;
+    }
+    let candidate = web_dir.join(rel);
+    // 文件存在 -> 返回（已在 web_dir 之下，前面词性检查保证无穿越）
+    if candidate.is_file() {
+        Some(candidate)
+    } else {
+        // 不存在 -> SPA fallback 到 index.html
+        Some(web_dir.join("index.html"))
+    }
+}
+
+/// 处理静态文件请求：返回对应文件 + 正确 MIME；路径穿越被拒。
+/// 不带 ETag/Cache-Control（自托管私有云，反代可加缓存头）。
+fn serve_static(
+    req: Request,
+    web_dir: &Path,
+    url: &str,
+    _accept_gzip: bool,
+) -> std::io::Result<()> {
+    let origin = Header::from_bytes("Access-Control-Allow-Origin", "*").expect("static header");
+    let path = match resolve_web_path(web_dir, url) {
+        Some(p) => p,
+        None => {
+            return req.respond(
+                Response::from_string("forbidden")
+                    .with_status_code(403)
+                    .with_header(origin),
+            );
+        }
+    };
+    let data = match std::fs::read(&path) {
+        Ok(d) => d,
+        Err(_) => {
+            // 文件读失败（含 index.html 缺失）-> 404
+            return req.respond(
+                Response::from_string("not found")
+                    .with_status_code(404)
+                    .with_header(origin),
+            );
+        }
+    };
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    let mime = mime_for(ext);
+    let ct = Header::from_bytes("Content-Type", mime).expect("static header");
+    // SPA index.html 不缓存，避免新版本发布后浏览器拿旧壳
+    let cache = if ext == "html" {
+        "no-cache"
+    } else {
+        "public, max-age=3600"
+    };
+    let cache_h = Header::from_bytes("Cache-Control", cache).expect("static header");
+    req.respond(
+        Response::from_data(data)
+            .with_status_code(200)
+            .with_header(ct)
+            .with_header(origin)
+            .with_header(cache_h),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    /// resolve_web_path：根路径 -> index.html；assets 子文件 -> 命中；穿越被拒。
+    #[test]
+    fn web_path_resolution_safe() {
+        let dir = tempdir().unwrap();
+        let web = dir.path().join("web");
+        let assets = web.join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        std::fs::write(web.join("index.html"), "<html/>").unwrap();
+        std::fs::write(assets.join("app.js"), "console.log(1)").unwrap();
+
+        // 根 -> index.html
+        let p = resolve_web_path(&web, "/").unwrap();
+        assert!(p.ends_with("index.html"));
+
+        // assets/app.js -> 命中文件
+        let p = resolve_web_path(&web, "/assets/app.js").unwrap();
+        assert!(p.ends_with("app.js"));
+
+        // 未知路径 -> SPA fallback 到 index.html
+        let p = resolve_web_path(&web, "/sessions/xyz").unwrap();
+        assert!(p.ends_with("index.html"));
+
+        // 路径穿越 -> None
+        assert!(resolve_web_path(&web, "/../recordings").is_none());
+        assert!(resolve_web_path(&web, "/assets/../../etc/passwd").is_none());
+
+        // 带 query 不影响
+        let p = resolve_web_path(&web, "/assets/app.js?v=1").unwrap();
+        assert!(p.ends_with("app.js"));
+    }
+
+    /// mime_for：常见扩展名映射正确。
+    #[test]
+    fn mime_dispatch_covers_common() {
+        assert!(mime_for("html").contains("text/html"));
+        assert!(mime_for("js").contains("javascript"));
+        assert!(mime_for("css").contains("text/css"));
+        assert!(mime_for("json").contains("application/json"));
+        assert!(mime_for("svg").contains("image/svg"));
+        assert!(mime_for("woff2").contains("font/woff2"));
+        assert_eq!(mime_for("unknown"), "application/octet-stream");
+    }
 }

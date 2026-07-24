@@ -51,6 +51,12 @@ impl QuotaTracker {
         let arc = self.handle(tenant_id, tenant_root);
         arc.fetch_add(bytes, Ordering::Relaxed);
     }
+
+    /// 读当前用量（P10：`GET /whoami` 顶栏配额条用）。零成本：读 AtomicU64。
+    /// 未初始化的租户触发惰性扫描（首次访问），后续 fast path。
+    pub fn usage(&self, tenant_id: &str, tenant_root: &Path) -> u64 {
+        self.handle(tenant_id, tenant_root).load(Ordering::Relaxed)
+    }
 }
 
 /// 递归求目录总字节。不存在返回 0。
@@ -129,5 +135,32 @@ mod tests {
         // 现在 300，配额 350：再加 50 ok，51 超限
         assert!(tracker.check("t1", root, 350, 50));
         assert!(!tracker.check("t1", root, 350, 51));
+    }
+
+    /// P10：usage() 读当前用量（供 /whoami 顶栏配额条）。
+    #[test]
+    fn usage_reads_current() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let tracker = QuotaTracker::new();
+        // 未初始化 0
+        assert_eq!(tracker.usage("t1", root), 0);
+        tracker.add("t1", root, 100);
+        assert_eq!(tracker.usage("t1", root), 100);
+        tracker.add("t1", root, 250);
+        assert_eq!(tracker.usage("t1", root), 350);
+        // 不同租户隔离
+        assert_eq!(tracker.usage("t2", root), 0);
+    }
+
+    /// usage() 惰性扫描已有文件。
+    #[test]
+    fn usage_scans_existing() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        fs::write(root.join("a.json"), "hello").unwrap(); // 5 bytes
+        let tracker = QuotaTracker::new();
+        // 首次 usage 触发扫描，返回已存在文件总字节
+        assert_eq!(tracker.usage("t1", root), 5);
     }
 }

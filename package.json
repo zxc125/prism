@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "build:web": "vue-tsc --noEmit && vite build && cp -r dist/* crates/observer-server/web/",
     "preview": "vite preview",
     "tauri": "tauri",
     "build:sdk": "pnpm --filter @rrweb-demo/observer-sdk build",

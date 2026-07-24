@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core";
+import {
+  loadBackendConfig,
+  saveBackendConfig,
+  resetBackend,
+  type BackendConfig,
+} from "../composables/backend";
 
 type IngestStatus = {
   enabled: boolean;
@@ -27,6 +33,9 @@ const form = reactive({
 
 const status = ref<IngestStatus | null>(null);
 
+// 云端连接（P8）：本地 invoke / 云端 HTTP。存 localStorage，切到云端后数据读/管理走 endpoint。
+const backend = reactive<BackendConfig>(loadBackendConfig());
+
 async function load() {
   try {
     const s = await invoke<IngestStatus>("get_ingest_config");
@@ -52,6 +61,19 @@ async function save() {
   } catch (e) {
     ElMessage.error(`保存失败: ${e}`);
   }
+}
+
+function saveBackend() {
+  // 切到 http 但未填 endpoint 时退回本地，避免空指针
+  if (backend.mode === "http" && !backend.endpoint.trim()) {
+    ElMessage.warning("云端模式需要填写 endpoint，已退回本地");
+    backend.mode = "tauri";
+  }
+  saveBackendConfig({ ...backend });
+  resetBackend();
+  ElMessage.success(
+    backend.mode === "http" ? "已切换到云端连接" : "已切换到本地模式",
+  );
 }
 
 const endpoint = computed(() =>
@@ -129,6 +151,40 @@ onMounted(load);
           <span class="field-hint">
             {{ status?.listening ? (status.enabled ? "监听中" : "已停用") : "未监听 · 端口占用？" }}
           </span>
+        </el-form-item>
+      </div>
+
+      <div class="field-group">
+        <div class="group-label eyebrow">云端连接</div>
+        <el-form-item label="数据来源">
+          <el-radio-group v-model="backend.mode">
+            <el-radio value="tauri">本地</el-radio>
+            <el-radio value="http">云端</el-radio>
+          </el-radio-group>
+          <span class="field-hint">本地 = invoke；云端 = HTTP 调自托管 server</span>
+        </el-form-item>
+        <el-form-item v-if="backend.mode === 'http'" label="Endpoint">
+          <el-input
+            v-model="backend.endpoint"
+            placeholder="https://obs.example.com"
+            style="width: 280px"
+          />
+          <span class="field-hint">自托管 observer-server 地址</span>
+        </el-form-item>
+        <el-form-item v-if="backend.mode === 'http'" label="API Key">
+          <el-input
+            v-model="backend.apiKey"
+            placeholder="Bearer token（server --token）"
+            style="width: 280px"
+            show-password
+          />
+          <span class="field-hint">Authorization: Bearer &lt;key&gt;</span>
+        </el-form-item>
+        <el-form-item v-if="backend.mode === 'http'">
+          <el-button type="primary" @click="saveBackend">应用云端连接</el-button>
+        </el-form-item>
+        <el-form-item v-else>
+          <el-button @click="saveBackend">应用本地模式</el-button>
         </el-form-item>
       </div>
 

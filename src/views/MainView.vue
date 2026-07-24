@@ -2,19 +2,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
+import {
+  getBackend,
+  loadBackendConfig,
+  type BackendConfig,
+  type SessionMeta as BackendSession,
+} from "../composables/backend";
 
 type Source = "self" | "web" | "tauri";
-type Session = {
-  id: string;
-  startedAt: number;
-  endedAt?: number;
-  source?: Source;
-  appId?: string;
-  name?: string;
-  note?: string;
-  tags?: string[];
-  importedAt?: number;
-};
+type Session = BackendSession;
 type IngestStatus = {
   enabled: boolean;
   port: number;
@@ -30,6 +26,7 @@ let tickHandle: number | null = null;
 
 const sessions = ref<Session[]>([]);
 const server = ref<IngestStatus | null>(null);
+const backendCfg = ref<BackendConfig>(loadBackendConfig());
 
 // 元信息编辑弹窗
 const editOpen = ref(false);
@@ -67,7 +64,7 @@ function errCount(_s: Session): number {
 
 async function refreshSessions() {
   try {
-    sessions.value = await invoke("list_sessions");
+    sessions.value = await getBackend().listSessions();
   } catch (e) {
     ElMessage.error(`读取列表失败: ${e}`);
   }
@@ -149,7 +146,7 @@ async function deleteSession(id: string) {
     return;
   }
   try {
-    await invoke("delete_session", { id });
+    await getBackend().deleteSession(id);
     await refreshSessions();
     ElMessage.success("已删除");
   } catch (e) {
@@ -174,9 +171,10 @@ async function saveEdit() {
     .map((t) => t.trim())
     .filter(Boolean);
   try {
-    await invoke("update_session_meta", {
-      id,
-      meta: { name: name.trim(), note: note.trim(), tags },
+    await getBackend().updateSessionMeta(id, {
+      name: name.trim(),
+      note: note.trim(),
+      tags,
     });
     editOpen.value = false;
     await refreshSessions();
@@ -188,7 +186,7 @@ async function saveEdit() {
 
 async function exportSession(s: Session) {
   try {
-    const bundle = await invoke("export_session", { id: s.id });
+    const bundle = await getBackend().exportSession(s.id);
     const base = (s.name || s.id).replace(/[^\w一-龥-]/g, "_");
     const blob = new Blob([JSON.stringify(bundle, null, 2)], {
       type: "application/json",
@@ -214,7 +212,7 @@ async function triggerImport() {
   });
   if (typeof path !== "string") return;
   try {
-    await invoke<string>("import_session_path", { path });
+    await getBackend().importBundlePath(path);
     await refreshSessions();
     ElMessage.success("已导入会话");
   } catch (err) {
@@ -298,13 +296,22 @@ const serverStateText = computed(() => {
   return `监听 ${server.value.addr}`;
 });
 
+// Backend 模式：本地 invoke / 云端 HTTP。切到云端时数据来源 = endpoint。
+const backendMode = computed(() => backendCfg.value.mode);
+const backendLabel = computed(() =>
+  backendCfg.value.mode === "http" && backendCfg.value.endpoint
+    ? backendCfg.value.endpoint
+    : "本地",
+);
+
 let unlistenFocus: (() => void) | null = null;
 onMounted(async () => {
   await Promise.all([refreshSessions(), loadServer()]);
-  // 切回 console 窗口时自动刷新（外部 web SDK 上报后切回即可见）
+  // 切回 console 窗口时自动刷新（外部 web SDK 上报后切回即可见；设置页改 Backend 后也同步）
   unlistenFocus = await getCurrentWebviewWindow().onFocusChanged(
     ({ payload: focused }) => {
       if (focused) {
+        backendCfg.value = loadBackendConfig();
         void refreshSessions();
         void loadServer();
       }
@@ -413,6 +420,14 @@ onBeforeUnmount(() => {
         <div>
           <div class="eyebrow">会话观测</div>
           <h1 class="browser-title">{{ listTitle }}</h1>
+          <div class="backend-mode mono" :title="backendMode === 'http' ? '云端连接' : '本地模式'">
+            <span
+              class="bm-dot"
+              :class="{ 'is-cloud': backendMode === 'http' }"
+              aria-hidden="true"
+            />
+            {{ backendLabel }}
+          </div>
         </div>
         <div class="filters">
           <button
@@ -747,6 +762,25 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: var(--bone);
   letter-spacing: -0.01em;
+}
+.backend-mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: var(--fs-xs);
+  color: var(--ash-deep);
+  letter-spacing: 0.04em;
+}
+.bm-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ash-deep);
+}
+.bm-dot.is-cloud {
+  background: var(--amber);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--amber) 55%, transparent);
 }
 .filters {
   display: flex;

@@ -1,6 +1,7 @@
 //! 会话级标注存储：annotations.jsonl，每行一条标注 JSON。
+//!
 //! 标注是回放侧「人对会话的批注」，与 segment 事件流分离，保持原始录制数据纯净。
-//! 整体覆盖写入（save_annotations）：前端持有完整列表，增删改后整体覆写。
+//! 整体覆盖写入（[`write_annotations`]）：前端持有完整列表，增删改后整体覆写。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -40,11 +41,10 @@ pub fn write_annotations(dir: &Path, annotations: &[Value]) -> Result<(), String
 mod tests {
     use super::*;
     use serde_json::json;
-    use tempfile::tempdir;
 
     #[test]
     fn write_then_read_roundtrip() {
-        let dir = tempdir().unwrap();
+        let dir = tempfile::tempdir().unwrap();
         let annos = vec![
             json!({ "id": "a1", "t": 100, "text": "first", "author": "local" }),
             json!({ "id": "a2", "t": 500, "text": "second", "author": "local" }),
@@ -58,13 +58,13 @@ mod tests {
 
     #[test]
     fn read_missing_file_is_empty() {
-        let dir = tempdir().unwrap();
+        let dir = tempfile::tempdir().unwrap();
         assert!(read_annotations(dir.path()).is_empty());
     }
 
     #[test]
     fn overwrite_replaces_all() {
-        let dir = tempdir().unwrap();
+        let dir = tempfile::tempdir().unwrap();
         write_annotations(dir.path(), &[json!({ "id": "a1", "t": 0 })]).unwrap();
         write_annotations(dir.path(), &[json!({ "id": "b1", "t": 9 })]).unwrap();
         let got = read_annotations(dir.path());

@@ -12,6 +12,8 @@ links = "tauri-plugin-observer"
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 纯存储层（落盘 + bundle）抽成独立 crate，与 observer-server 共用
+observer-storage = { path = "../../crates/observer-storage" }
 
 [build-dependencies]
 tauri-plugin = { version = "2", features = ["build"] }

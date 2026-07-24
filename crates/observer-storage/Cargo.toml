@@ -1,0 +1,15 @@
+[package]
+name = "observer-storage"
+version = "0.1.0"
+description = "本地优先前端观测平台 · 纯存储层（落盘 + annotations + bundle 契约）"
+edition = "2021"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

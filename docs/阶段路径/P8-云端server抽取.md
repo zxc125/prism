@@ -1,6 +1,16 @@
 # P8：云端 server 抽取 + Backend 抽象
 
-> 阶段路径第 8 阶段（规划中）。目标：console 可连自托管云端 server——ingest + storage + 读 API 抽成独立服务，console 加 Backend 抽象，本地/云端切换。
+> 阶段路径第 8 阶段（✅ 已完成）。目标：console 可连自托管云端 server——ingest + storage + 读 API 抽成独立服务，console 加 Backend 抽象，本地/云端切换。
+
+## 落地结果
+
+- **[`crates/observer-storage`](../../crates/observer-storage)**：纯存储层（落盘原语 + annotations + bundle 契约 + `read_session`/`list_sessions`/`import_bundle_content` 等读/导入导出），零 tauri 依赖，全吃 `&Path`。`tauri-plugin-observer::storage` 只留 `recordings_root` + re-export。
+- **[`crates/observer-server`](../../crates/observer-server)**：HTTP server（`ObserverServer` + 独立二进制 `observer-server`）。路由 = ingest `/ingest/*`（复用原 `handle_route`）+ 读 API `GET /sessions`、`GET /sessions/:id`、`GET /sessions/:id/annotations`、`POST /sessions/:id/annotations`、`PATCH /sessions/:id`、`GET /sessions/:id/export`、`POST /sessions/import`、`DELETE /sessions/:id`。可绑 `127.0.0.1`（console 内嵌）或 `0.0.0.0`（自托管），配置 `--bind`/`--data-dir`/`--token`（或环境变量）。
+- **console [ingest.rs](../../src-tauri/src/ingest.rs)**：退化为 `ObserverServer` 绑 127.0.0.1 的薄封装，同一份代码。`IngestState` 持 server 句柄 + data_dir，`set_ingest_config` 热更新 token/enabled。
+- **[lib.rs](../../src-tauri/src/lib.rs)**：所有命令收窄成 observer-storage 薄封装；新增 `read_text_file`（HttpBackend 导入路径：文件选择器拿 path -> 读内容 -> 上传云端）。
+- **[backend.ts](../../src/composables/backend.ts)**：`Backend` 接口 + `TauriBackend`（invoke）/ `HttpBackend`（HTTP），localStorage 存配置，`getBackend()` 单例。[SettingsView.vue](../../src/views/SettingsView.vue) 加「云端连接」分组（模式 toggle + endpoint + API key）。[MainView.vue](../../src/views/MainView.vue) 表头加连接模式指示器，数据访问全走 `getBackend()`，录制 Sink 正交不动。
+- **鉴权**：单一 Bearer token（空 token = 不鉴权，本机回环 dev 友好）。单租户起步，多租户留 P9。
+- **验收**：`cargo test` 13 passed（observer-storage 10 + observer-server 3）；observer-server 二进制端到端 11 项冒烟全过（401 未鉴权 -> 建会话 -> ingest segment/events -> end -> list/read/export/import/PATCH/DELETE -> 404）；本地模式（默认）行为不变。
 
 ## 目标
 

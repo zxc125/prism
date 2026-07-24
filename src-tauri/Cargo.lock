@@ -51,6 +51,8 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "observer-server",
+ "observer-storage",
  "serde",
  "serde_json",
  "tauri",
@@ -59,7 +61,6 @@ dependencies = [
  "tauri-plugin-observer",
  "tauri-plugin-opener",
  "tempfile",
- "tiny_http",
 ]
 
 [[package]]
@@ -2294,6 +2295,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "observer-server"
+version = "0.1.0"
+dependencies = [
+ "observer-storage",
+ "serde",
+ "serde_json",
+ "tiny_http",
+]
+
+[[package]]
+name = "observer-storage"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3490,6 +3509,7 @@ dependencies = [
 name = "tauri-plugin-observer"
 version = "0.1.0"
 dependencies = [
+ "observer-storage",
  "serde",
  "serde_json",
  "tauri",

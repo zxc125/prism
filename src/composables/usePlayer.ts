@@ -1,6 +1,6 @@
 import { Replayer, type eventWithTime } from "rrweb";
-import { invoke } from "@tauri-apps/api/core";
 import { ref, computed } from "vue";
+import { getBackend } from "./backend";
 
 type RREvent = eventWithTime;
 type WindowEvt = {
@@ -97,7 +97,7 @@ export function usePlayer(sessionId: string) {
   );
 
   async function load() {
-    const data = await invoke<SessionData>("read_session", { id: sessionId });
+    const data = (await getBackend().readSession(sessionId)) as unknown as SessionData;
     segs = [];
     slots = new Map();
     for (const [segmentId, events] of Object.entries(data.segments)) {

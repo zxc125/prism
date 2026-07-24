@@ -1,0 +1,13 @@
+# 国内 crates.io 镜像（与 src-tauri/.cargo/config.toml 一致）。
+# 放在根级，让 crates/observer-storage、crates/observer-server 等非 src-tauri 目录
+# 的 `cargo build/check` 也能走 rsproxy。src-tauri 内有自己的同名配置，互不冲突。
+[source.crates-io]
+replace-with = 'rsproxy-sparse'
+[source.rsproxy]
+registry = "https://rsproxy.cn/crates.io-index"
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+[registries.rsproxy]
+index = "https://rsproxy.cn/crates.io-index"
+[net]
+git-fetch-with-cli = true

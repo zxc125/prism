@@ -1,21 +1,13 @@
-import { invoke } from "@tauri-apps/api/core";
 import { ref } from "vue";
+import { getBackend, type Annotation } from "./backend";
 
-export type Annotation = {
-  id: string;
-  /** 相对会话起点 ms（与 signals 共享时间轴） */
-  t: number;
-  /** 关联窗口 label（可选） */
-  label?: string;
-  text: string;
-  author: string;
-  createdAt: number;
-};
+// 兼容旧 import 路径：类型统一收敛到 backend.ts
+export type { Annotation };
 
 /**
- * 会话级标注：load 后前端持有完整列表，增删改后 debounce 整体覆写
+ * 会话级标注：load 后前端持有完整列表，增删改后立即整体覆写
  * annotations.jsonl。与 segment 事件流分离，回放时与 signals 共享相对
- * 会话起点的时间轴。导出/导入由后端 export_session / import_session 承载。
+ * 会话起点的时间轴。导出/导入由 Backend 的 exportSession / importBundle 承载。
  */
 export function useAnnotations(sessionId: string) {
   const annotations = ref<Annotation[]>([]);
@@ -23,7 +15,7 @@ export function useAnnotations(sessionId: string) {
 
   async function load() {
     try {
-      const list = await invoke<Annotation[]>("list_annotations", { id: sessionId });
+      const list = await getBackend().listAnnotations(sessionId);
       annotations.value = list.sort((a, b) => a.t - b.t);
       loaded.value = true;
     } catch (e) {
@@ -35,10 +27,7 @@ export function useAnnotations(sessionId: string) {
   // 立即保存：标注是低频手动操作（打点/删除），无需 debounce，避免窗口关闭丢未 flush 的变更
   async function persist() {
     try {
-      await invoke("save_annotations", {
-        id: sessionId,
-        annotations: annotations.value,
-      });
+      await getBackend().saveAnnotations(sessionId, annotations.value);
     } catch (e) {
       console.error("[annotations] save failed", e);
     }

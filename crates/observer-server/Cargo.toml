@@ -1,0 +1,24 @@
+[package]
+name = "observer-server"
+version = "0.1.0"
+description = "本地优先前端观测平台 · 自托管 HTTP server（ingest + 读 API + bundle 上传）"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "observer_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "observer-server"
+path = "src/bin/observer_server.rs"
+
+[dependencies]
+observer-storage = { path = "../observer-storage" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# 同步、轻量 HTTP server：串行处理本机回环 / 低并发自托管上报
+tiny_http = "0.12"
+
+[dev-dependencies]
+tempfile = "3"

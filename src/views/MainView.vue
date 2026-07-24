@@ -9,6 +9,10 @@ type Session = {
   endedAt?: number;
   source?: Source;
   appId?: string;
+  name?: string;
+  note?: string;
+  tags?: string[];
+  importedAt?: number;
 };
 type IngestStatus = {
   enabled: boolean;
@@ -25,6 +29,11 @@ let tickHandle: number | null = null;
 
 const sessions = ref<Session[]>([]);
 const server = ref<IngestStatus | null>(null);
+
+// 元信息编辑弹窗 + 导入文件 input
+const editOpen = ref(false);
+const editForm = ref({ id: "", name: "", note: "", tagsStr: "" });
+const importInput = ref<HTMLInputElement>();
 
 const srcFilter = ref<"all" | Source>("all");
 const search = ref("");
@@ -148,6 +157,82 @@ async function deleteSession(id: string) {
   }
 }
 
+function openEdit(s: Session) {
+  editForm.value = {
+    id: s.id,
+    name: s.name ?? "",
+    note: s.note ?? "",
+    tagsStr: (s.tags ?? []).join(", "),
+  };
+  editOpen.value = true;
+}
+
+async function saveEdit() {
+  const { id, name, note, tagsStr } = editForm.value;
+  const tags = tagsStr
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  try {
+    await invoke("update_session_meta", {
+      id,
+      meta: { name: name.trim(), note: note.trim(), tags },
+    });
+    editOpen.value = false;
+    await refreshSessions();
+    ElMessage.success("已保存");
+  } catch (e) {
+    ElMessage.error(`保存失败: ${e}`);
+  }
+}
+
+async function exportSession(s: Session) {
+  try {
+    const bundle = await invoke("export_session", { id: s.id });
+    const base = (s.name || s.id).replace(/[^\w一-龥-]/g, "_");
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${base}.rrweb-session.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    ElMessage.success("已导出");
+  } catch (e) {
+    ElMessage.error(`导出失败: ${e}`);
+  }
+}
+
+function triggerImport() {
+  importInput.value?.click();
+}
+
+async function onImportFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    await invoke<string>("import_session", { content: text });
+    await refreshSessions();
+    ElMessage.success("已导入会话");
+  } catch (err) {
+    ElMessage.error(`导入失败: ${err}`);
+  } finally {
+    input.value = "";
+  }
+}
+
+function onRowCommand(cmd: string, s: Session) {
+  if (cmd === "delete") deleteSession(s.id);
+  else if (cmd === "edit") openEdit(s);
+  else if (cmd === "export") exportSession(s);
+}
+
 function fmtClock(ts?: number) {
   if (!ts) return "-";
   const d = new Date(ts);
@@ -175,7 +260,12 @@ const filteredSessions = computed(() => {
     list = list.filter((s) => sourceOf(s) === srcFilter.value);
   }
   const q = search.value.trim().toLowerCase();
-  if (q) list = list.filter((s) => s.id.toLowerCase().includes(q));
+  if (q)
+    list = list.filter(
+      (s) =>
+        s.id.toLowerCase().includes(q) ||
+        (s.name?.toLowerCase().includes(q) ?? false),
+    );
   return list;
 });
 
@@ -342,12 +432,22 @@ onBeforeUnmount(() => {
           <el-input
             v-model="search"
             class="search"
-            placeholder="搜索会话 ID"
+            placeholder="搜索 ID / 名称"
             size="small"
             clearable
           />
+          <button class="import-btn" @click="triggerImport">
+            <span class="mono">↧</span> 导入
+          </button>
         </div>
       </header>
+      <input
+        ref="importInput"
+        type="file"
+        accept=".json,application/json"
+        class="hidden-input"
+        @change="onImportFile"
+      />
 
       <div class="session-list">
         <div v-if="!filteredSessions.length" class="empty">
@@ -361,20 +461,64 @@ onBeforeUnmount(() => {
           <span class="row-time mono">{{ fmtClock(s.startedAt) }}</span>
           <span class="row-dur mono">{{ sessionDur(s) }}</span>
           <span v-if="errCount(s) > 0" class="row-err mono">⚠{{ errCount(s) }}</span>
-          <span class="row-id mono">{{ s.id }}</span>
+          <span
+            class="row-id mono"
+            :class="{ 'is-named': s.name }"
+            :title="s.name ? `${s.name} · ${s.id}` : s.id"
+            >{{ s.name || s.id }}</span
+          >
+          <span v-if="s.importedAt" class="row-tag mono">导入</span>
           <span class="row-spacer" />
           <el-button size="small" type="primary" @click="openPlayer(s.id)">回放</el-button>
-          <el-dropdown trigger="click" @command="(cmd: string) => cmd === 'delete' && deleteSession(s.id)">
+          <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, s)">
             <el-button size="small" class="more" @click.stop>⋯</el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="delete">删除</el-dropdown-item>
+                <el-dropdown-item command="edit">编辑信息</el-dropdown-item>
+                <el-dropdown-item command="export">导出</el-dropdown-item>
+                <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
         </div>
       </div>
     </section>
+
+    <!-- 元信息编辑弹窗：重命名 / 备注 / 标签 -->
+    <el-dialog
+      v-model="editOpen"
+      title="会话信息"
+      width="420px"
+      :close-on-click-modal="false"
+    >
+      <el-form label-position="top" class="edit-form">
+        <el-form-item label="名称">
+          <el-input
+            v-model="editForm.name"
+            placeholder="给这个会话起个名字"
+            maxlength="60"
+          />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="editForm.note"
+            type="textarea"
+            :rows="3"
+            placeholder="发生了什么、如何复现…"
+          />
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-input
+            v-model="editForm.tagsStr"
+            placeholder="逗号分隔，如 login, bug"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editOpen = false">取消</el-button>
+        <el-button type="primary" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </main>
 </template>
 
@@ -706,5 +850,53 @@ onBeforeUnmount(() => {
 }
 .more {
   font-family: var(--font-mono);
+}
+
+/* 导入按钮 */
+.import-btn {
+  appearance: none;
+  border: 1px solid var(--hair);
+  background: transparent;
+  color: var(--ash);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  padding: 5px 11px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.import-btn:hover {
+  color: var(--bone-dim);
+  border-color: var(--ash-deep);
+}
+.import-btn .mono {
+  color: var(--amber);
+}
+.hidden-input {
+  display: none;
+}
+
+/* 会话行：命名突出 / 导入标记 */
+.row-id.is-named {
+  color: var(--bone);
+}
+.row-tag {
+  font-size: 10px;
+  color: var(--src-tauri);
+  border: 1px solid color-mix(in srgb, var(--src-tauri) 40%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 0 5px;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+/* 编辑弹窗 */
+.edit-form :deep(.el-form-item__label) {
+  font-size: var(--fs-xs);
+  padding-bottom: 4px;
 }
 </style>

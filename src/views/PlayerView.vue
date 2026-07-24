@@ -2,17 +2,21 @@
 import "rrweb/dist/style.css";
 import { useRoute } from "vue-router";
 import { usePlayer, LANE_COLORS, type Signal } from "../composables/usePlayer";
+import { useAnnotations } from "../composables/useAnnotations";
 
 const route = useRoute();
 const id = route.params.id as string;
 
 const gridRef = ref<HTMLElement>();
 const player = usePlayer(id);
+const annos = useAnnotations(id);
 
 const speeds = [0.5, 1, 2, 4];
 
 const diagOpen = ref(true);
+const diagTab = ref<"signal" | "note">("signal");
 const signalFilter = ref<"all" | "console" | "network" | "error">("all");
+const annoDraft = ref("");
 
 const filterOptions = [
   { key: "all", label: "全部" },
@@ -117,6 +121,42 @@ function onSignalClick(t: number) {
   player.seek(t);
 }
 
+// 在当前播放头位置打标注
+function addAnno() {
+  const text = annoDraft.value.trim();
+  if (!text) return;
+  annos.add({
+    t: player.currentTime.value,
+    label: player.mainLabel.value ?? undefined,
+    text,
+    author: "local",
+  });
+  annoDraft.value = "";
+}
+
+function onAnnoClick(t: number) {
+  player.seek(t);
+}
+
+function removeAnno(annoId: string) {
+  annos.remove(annoId);
+}
+
+// 当前播放头附近的标注高亮（±250ms 内取最近）
+const activeAnnoId = computed(() => {
+  const t = player.currentTime.value;
+  let best: string | null = null;
+  let bestDt = 250;
+  for (const a of annos.annotations.value) {
+    const dt = Math.abs(a.t - t);
+    if (dt < bestDt) {
+      bestDt = dt;
+      best = a.id;
+    }
+  }
+  return best;
+});
+
 // 活跃信号行滚入视口
 watch(activeSigIdx, (idx) => {
   if (idx < 0 || !streamRef.value) return;
@@ -131,6 +171,7 @@ onMounted(async () => {
   } catch (e) {
     ElMessage.error(`加载录制失败: ${e}`);
   }
+  void annos.load();
 });
 
 onBeforeUnmount(() => player.destroy());
@@ -169,8 +210,28 @@ onBeforeUnmount(() => player.destroy());
 
         <aside class="diagnosis">
           <header class="diag-head">
-            <span class="eyebrow">诊断 · signal</span>
+            <div class="diag-tabs">
+              <button
+                class="diag-tab mono"
+                :class="{ 'is-active': diagTab === 'signal' }"
+                @click="diagTab = 'signal'"
+              >
+                信号
+              </button>
+              <button
+                class="diag-tab mono"
+                :class="{ 'is-active': diagTab === 'note' }"
+                @click="diagTab = 'note'"
+              >
+                标注<span
+                  v-if="annos.annotations.value.length"
+                  class="tab-count"
+                  >{{ annos.annotations.value.length }}</span
+                >
+              </button>
+            </div>
             <el-select
+              v-if="diagTab === 'signal'"
               v-model="signalFilter"
               size="small"
               class="diag-filter"
@@ -183,7 +244,8 @@ onBeforeUnmount(() => player.destroy());
               />
             </el-select>
           </header>
-          <div ref="streamRef" class="signal-stream">
+
+          <div v-show="diagTab === 'signal'" ref="streamRef" class="signal-stream">
             <div
               v-for="(s, i) in filteredSignals"
               :key="i"
@@ -201,6 +263,41 @@ onBeforeUnmount(() => player.destroy());
               <span class="sig-text" :title="sigText(s)">{{ sigText(s) }}</span>
             </div>
             <div v-if="!filteredSignals.length" class="sig-empty">无信号</div>
+          </div>
+
+          <div v-show="diagTab === 'note'" class="anno-pane">
+            <div class="anno-add">
+              <span class="anno-tc mono">{{ sigTimecode(player.currentTime.value) }}</span>
+              <el-input
+                v-model="annoDraft"
+                size="small"
+                placeholder="标注此处…"
+                @keydown.enter="addAnno"
+              />
+              <el-button size="small" type="primary" @click="addAnno">标记</el-button>
+            </div>
+            <div class="anno-list">
+              <div
+                v-for="a in annos.annotations.value"
+                :key="a.id"
+                class="anno-row"
+                :class="{ 'is-active': a.id === activeAnnoId }"
+                @click="onAnnoClick(a.t)"
+              >
+                <span class="anno-tc mono">{{ sigTimecode(a.t) }}</span>
+                <span class="anno-text" :title="a.text">{{ a.text }}</span>
+                <button
+                  class="anno-del"
+                  aria-label="删除标注"
+                  @click.stop="removeAnno(a.id)"
+                >
+                  ×
+                </button>
+              </div>
+              <div v-if="!annos.annotations.value.length" class="sig-empty">
+                无标注 · 移动到任意位置，输入文本后标记
+              </div>
+            </div>
           </div>
         </aside>
       </div>
@@ -258,6 +355,13 @@ onBeforeUnmount(() => player.destroy());
               :key="'f' + i"
               class="tl-focus"
               :style="{ left: pct(t) + '%' }"
+            />
+            <div
+              v-for="a in annos.annotations.value"
+              :key="'an' + a.id"
+              class="tl-anno"
+              :style="{ left: pct(a.t) + '%' }"
+              :title="`${sigTimecode(a.t)} · ${a.text}`"
             />
             <div
               class="tl-playhead"
@@ -424,6 +528,33 @@ onBeforeUnmount(() => player.destroy());
   margin-left: auto;
   width: 110px;
 }
+.diag-tabs {
+  display: flex;
+  gap: 2px;
+}
+.diag-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ash);
+  font-size: var(--fs-xs);
+  padding: 4px 8px;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+}
+.diag-tab:hover {
+  color: var(--bone-dim);
+}
+.diag-tab.is-active {
+  color: var(--bone);
+  background: var(--slate-3);
+}
+.tab-count {
+  margin-left: 4px;
+  color: var(--amber);
+}
 .signal-stream {
   flex: 1;
   overflow-y: auto;
@@ -475,6 +606,91 @@ onBeforeUnmount(() => player.destroy());
   font-size: var(--fs-xs);
   padding: 24px;
   text-align: center;
+}
+
+/* ---- annotation pane ---- */
+.anno-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.anno-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+  background: var(--slate-2);
+}
+.anno-add .anno-tc {
+  font-size: var(--fs-xs);
+  color: var(--amber);
+  flex-shrink: 0;
+}
+.anno-add :deep(.el-input) {
+  flex: 1;
+  min-width: 0;
+}
+.anno-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.anno-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.12s;
+}
+.anno-row:hover {
+  background: var(--slate-2);
+}
+.anno-row.is-active {
+  background: var(--amber-tint);
+  border-left-color: var(--amber);
+}
+.anno-row .anno-tc {
+  font-size: var(--fs-xs);
+  color: var(--ash);
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+.anno-row.is-active .anno-tc {
+  color: var(--amber);
+}
+.anno-text {
+  font-size: var(--fs-xs);
+  color: var(--bone-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.anno-row.is-active .anno-text {
+  color: var(--bone);
+}
+.anno-del {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ash-deep);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+.anno-row:hover .anno-del {
+  opacity: 1;
+}
+.anno-del:hover {
+  color: var(--oxblood-soft);
 }
 
 /* ---- transport ---- */
@@ -550,6 +766,17 @@ onBeforeUnmount(() => player.destroy());
   background: var(--bone);
   opacity: 0.32;
   pointer-events: none;
+}
+.tl-anno {
+  position: absolute;
+  bottom: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bone);
+  transform: translateX(-50%);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px var(--ink), 0 0 5px rgba(232, 226, 212, 0.45);
 }
 .tl-playhead {
   position: absolute;

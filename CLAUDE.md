@@ -28,7 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 阶段路径（[docs/阶段路径/](docs/阶段路径/)）：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享。
 
-**进度**：P1 ✅（源监控机架 + 会话浏览器 + 诊断信号流）· P2 ✅（error/console/network hook，`type:6` 交错进事件流）· P3 ✅（[sink.ts](src/composables/sink.ts) 抽 `Sink` 接口 + `TauriSink`，useRecorder 不再直接 invoke）· P4 ✅（Web SDK：console 起 `127.0.0.1` 本地 HTTP server `/ingest/*`（[ingest.rs](src-tauri/src/ingest.rs)）+ 打包 [`packages/observer-sdk`](packages/observer-sdk)（`@rrweb-demo/observer-sdk`）走 `HttpSink`，self-obs 与 SDK 共用 `SegmentRecorder`；样例 [`examples/web-demo`](examples/web-demo)）· P5 ✅（抽 [`plugins/tauri-plugin-observer`](plugins/tauri-plugin-observer) 独立 crate：Local（console self-obs，Rust 落盘）+ Remote（外部应用，前端 `HttpSink` 上报）双模式；录制命令搬进插件，console 装 `plugin:observer|*`；[`packages/observer-tauri`](packages/observer-tauri) 提供 `initTauri()` 驱动；样例 [`examples/tauri-demo`](examples/tauri-demo)）· P6 未启动。
+**进度**：P1 ✅（源监控机架 + 会话浏览器 + 诊断信号流）· P2 ✅（error/console/network hook，`type:6` 交错进事件流）· P3 ✅（[sink.ts](src/composables/sink.ts) 抽 `Sink` 接口 + `TauriSink`，useRecorder 不再直接 invoke）· P4 ✅（Web SDK：console 起 `127.0.0.1` 本地 HTTP server `/ingest/*`（[ingest.rs](src-tauri/src/ingest.rs)）+ 打包 [`packages/observer-sdk`](packages/observer-sdk)（`@rrweb-demo/observer-sdk`）走 `HttpSink`，self-obs 与 SDK 共用 `SegmentRecorder`；样例 [`examples/web-demo`](examples/web-demo)）· P5 ✅（抽 [`plugins/tauri-plugin-observer`](plugins/tauri-plugin-observer) 独立 crate：Local（console self-obs，Rust 落盘）+ Remote（外部应用，前端 `HttpSink` 上报）双模式；录制命令搬进插件，console 装 `plugin:observer|*`；[`packages/observer-tauri`](packages/observer-tauri) 提供 `initTauri()` 驱动；样例 [`examples/tauri-demo`](examples/tauri-demo)）· P6 ✅（标注存 session 级 `annotations.jsonl`（`{ id, t, label, text, author, createdAt }`）与 segment 事件流分离；console 新增 `list_annotations`/`save_annotations`/`update_session_meta`/`export_session`/`import_session` 命令（新建 [annotations.rs](src-tauri/src/annotations.rs)）；[`useAnnotations`](src/composables/useAnnotations.ts) 持有完整列表、增删改后立即整体覆写；PlayerView 诊断栏加「信号/标注」tab + 时间轴骨白圆点标记，MainView 会话行加编辑/导出 + 顶部导入；导出为单文件 JSON bundle（`format: rrweb-demo-session`）零新依赖，导入分配新 id 重建目录）。
 
 ## 架构
 
@@ -40,9 +40,10 @@ rrweb 在前端 webview 里跑，每个窗口各一个 `record()` 实例；事�
 
 ```
 recordings/<sessionId>/
-  session.json          # { id, startedAt, endedAt }
+  session.json          # { id, startedAt, endedAt?, source?, name?, note?, tags?, importedAt? }
   windows.jsonl         # 窗口生命周期: shown/hidden/focus，带 segmentId
   segments/<label>#<n>.jsonl   # 每段 rrweb 事件流（一次 show ~ hide = 一段）
+  annotations.jsonl     # 用户标注（P6，session 级，与事件流分离）
 ```
 
 关键机制（需结合多文件理解）：
@@ -52,7 +53,7 @@ recordings/<sessionId>/
 - **子窗口关闭=隐藏**：录制期间，子窗口的 `CloseRequested` 被拦截为 `hide()` + 记 `hidden` + `emit_to` segment:stop；再次 `open_window` 复用已隐藏窗口时 `show()` + 插件 `emit_segment_start_if_active` 开新段。主窗口关闭不拦截 = 退出进程。见插件 [lifecycle.rs](plugins/tauri-plugin-observer/src/lifecycle.rs)（Tauri 2 plugin Builder 无 `on_window_event`，用 `on_window_ready` 给每窗口挂 `Window::on_window_event`）。
 - **跨窗口对齐**：rrweb 事件带绝对 `timestamp`，所有窗口共享墙上时钟，回放时按 `shown.t ~ hidden.t` 区间在主时间轴上同步驱动各 segment 的 `Replayer`。见 [src/composables/usePlayer.ts](src/composables/usePlayer.ts)。
 - **回放**：[src/views/PlayerView.vue](src/views/PlayerView.vue) 用底层 `Replayer`（rrweb-player 是 Vue 2，不能用）+ 自建 Element Plus 控制条，平铺显示当前活跃窗口。
-- 新增的 Tauri command：console 自有命令（`greet`/`open_window`/`list_sessions`/`read_session`/`delete_session`/`get_ingest_config`/`set_ingest_config`）注册在 [src-tauri/src/lib.rs](src-tauri/src/lib.rs) `generate_handler![]`，无需 capabilities 授权；插件命令（`plugin:observer|*`）注册在插件 `Builder::invoke_handler`，需 `observer:default` 权限。
+- 新增的 Tauri command：console 自有命令（`greet`/`open_window`/`list_sessions`/`read_session`/`delete_session`/`list_annotations`/`save_annotations`/`update_session_meta`/`export_session`/`import_session`/`get_ingest_config`/`set_ingest_config`）注册在 [src-tauri/src/lib.rs](src-tauri/src/lib.rs) `generate_handler![]`，无需 capabilities 授权；插件命令（`plugin:observer|*`）注册在插件 `Builder::invoke_handler`，需 `observer:default` 权限。
 
 ### 多窗口系统（横跨前端 + 后端）
 

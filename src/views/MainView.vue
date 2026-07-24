@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { open } from "@tauri-apps/plugin-dialog";
 
 type Source = "self" | "web" | "tauri";
 type Session = {
@@ -30,10 +31,9 @@ let tickHandle: number | null = null;
 const sessions = ref<Session[]>([]);
 const server = ref<IngestStatus | null>(null);
 
-// 元信息编辑弹窗 + 导入文件 input
+// 元信息编辑弹窗
 const editOpen = ref(false);
 const editForm = ref({ id: "", name: "", note: "", tagsStr: "" });
-const importInput = ref<HTMLInputElement>();
 
 const srcFilter = ref<"all" | Source>("all");
 const search = ref("");
@@ -207,23 +207,18 @@ async function exportSession(s: Session) {
   }
 }
 
-function triggerImport() {
-  importInput.value?.click();
-}
-
-async function onImportFile(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
+async function triggerImport() {
+  const path = await open({
+    multiple: false,
+    filters: [{ name: "会话 bundle", extensions: ["json"] }],
+  });
+  if (typeof path !== "string") return;
   try {
-    const text = await file.text();
-    await invoke<string>("import_session", { content: text });
+    await invoke<string>("import_session_path", { path });
     await refreshSessions();
     ElMessage.success("已导入会话");
   } catch (err) {
     ElMessage.error(`导入失败: ${err}`);
-  } finally {
-    input.value = "";
   }
 }
 
@@ -441,13 +436,6 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </header>
-      <input
-        ref="importInput"
-        type="file"
-        accept=".json,application/json"
-        class="hidden-input"
-        @change="onImportFile"
-      />
 
       <div class="session-list">
         <div v-if="!filteredSessions.length" class="empty">
@@ -875,9 +863,6 @@ onBeforeUnmount(() => {
 }
 .import-btn .mono {
   color: var(--amber);
-}
-.hidden-input {
-  display: none;
 }
 
 /* 会话行：命名突出 / 导入标记 */

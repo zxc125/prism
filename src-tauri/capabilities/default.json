@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "observer:default"
+    "observer:default",
+    "dialog:default"
   ]
 }

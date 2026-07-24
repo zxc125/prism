@@ -44,3 +44,29 @@ export type SignalPlugin = "error" | "console" | "network";
 
 /** 诊断信号开关：默认全开；外部 SDK 可按需只开部分。 */
 export type SignalSet = "all" | Partial<Record<SignalPlugin, boolean>>;
+
+/** 用户标注（与 annotations.jsonl 一行对应）。session 级，与事件流分离。 */
+export interface Annotation {
+  id: string;
+  t: number; // 时间码（session 内 ms，相对 startedAt）
+  label?: string; // 关联窗口/段标签
+  text: string;
+  author?: string;
+  createdAt?: number;
+}
+
+/**
+ * 离线会话的内存形态：IndexedDBSink 读路径产出 / parseBundle 解析后得到。
+ * 与磁盘布局（session.json + windows.jsonl + segments/*.jsonl + annotations.jsonl）一一对应。
+ */
+export interface OfflineSessionData {
+  session: SessionMeta & {
+    id: string;
+    startedAt: number;
+    endedAt?: number;
+    importedAt?: number;
+  };
+  windows: LifecycleEvent[];
+  segments: Record<string, RREvent[]>;
+  annotations: Annotation[];
+}

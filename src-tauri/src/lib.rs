@@ -185,8 +185,8 @@ fn build_export_bundle(dir: &Path) -> Result<Value, String> {
     }
     let annotations = read_annotations(dir);
     Ok(json!({
-        "format": "rrweb-demo-session",
-        "version": 1,
+        "format": BUNDLE_FORMAT,
+        "version": BUNDLE_VERSION,
         "exportedAt": now_ms(),
         "session": session,
         "windows": windows,
@@ -214,6 +214,28 @@ fn unique_id(root: &Path) -> String {
     }
 }
 
+/// bundle 契约标识与版本（与 TS 侧 buildBundle/parseBundle 对齐，见 docs/架构/bundle-规范.md）。
+const BUNDLE_FORMAT: &str = "rrweb-demo-session";
+const BUNDLE_VERSION: i64 = 1;
+
+/// segmentId 合法性：`<label>#<n>`，label 仅 [A-Za-z0-9_-]。
+/// segment key 会成为文件名（segments/<key>.jsonl），此校验是路径穿越防护的核心。
+fn validate_segment_id(id: &str) -> bool {
+    let Some((label, n)) = id.split_once('#') else {
+        return false;
+    };
+    if label.is_empty() || n.is_empty() {
+        return false;
+    }
+    if !label
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
+        return false;
+    }
+    n.bytes().all(|b| b.is_ascii_digit())
+}
+
 /// 纯逻辑：把 bundle 重建为目标目录的文件结构（session.id 替换为 new_id，标记 importedAt）。
 fn write_import_bundle(dir: &Path, bundle: &Value, new_id: &str) -> Result<(), String> {
     fs::create_dir_all(dir.join("segments")).map_err(|e| e.to_string())?;
@@ -233,16 +255,19 @@ fn write_import_bundle(dir: &Path, bundle: &Value, new_id: &str) -> Result<(), S
         }
         fs::write(dir.join("windows.jsonl"), body).map_err(|e| e.to_string())?;
     }
-    // segments/<name>.jsonl
+    // segments/<name>.jsonl —— name 来自 bundle，必须校验防路径穿越（B1）
     if let Some(segs) = bundle["segments"].as_object() {
         for (name, events) in segs {
+            if !validate_segment_id(name) {
+                return Err(format!("非法 segmentId（拒绝以防路径穿越）：{name}"));
+            }
             if let Some(arr) = events.as_array() {
                 let mut body = String::new();
                 for e in arr {
                     body.push_str(&e.to_string());
                     body.push('\n');
                 }
-                fs::write(dir.join("segments").join(format!("{}.jsonl", name)), body)
+                fs::write(dir.join("segments").join(format!("{name}.jsonl")), body)
                     .map_err(|e| e.to_string())?;
             }
         }
@@ -254,19 +279,51 @@ fn write_import_bundle(dir: &Path, bundle: &Value, new_id: &str) -> Result<(), S
     Ok(())
 }
 
-/// 导入会话 JSON bundle：解析后重建目录到 recordings/<newId>/，返回新 id。
-/// 新 id 避免与本地会话冲突；session.json 标记 importedAt。
-#[tauri::command]
-fn import_session(app: AppHandle, content: String) -> Result<String, String> {
-    let v = serde_json::from_str::<Value>(&content).map_err(|e| e.to_string())?;
-    if v["format"].as_str() != Some("rrweb-demo-session") {
-        return Err("不是有效的会话文件（缺少 format: rrweb-demo-session）".into());
+/// 导入逻辑核心：import_session（内容）/ import_session_path（文件）共用。
+/// 校验 format/version、segmentId 合法性；原子写（先写 .tmp 再 rename），失败不留半成品。
+fn import_session_content(app: &AppHandle, content: &str) -> Result<String, String> {
+    let v = serde_json::from_str::<Value>(content).map_err(|e| e.to_string())?;
+    if v["format"].as_str() != Some(BUNDLE_FORMAT) {
+        return Err(format!("不是有效的会话文件（缺少 format: {BUNDLE_FORMAT}）"));
     }
-    let root = recordings_root(&app);
+    let version = v["version"].as_i64().unwrap_or(1);
+    if version > BUNDLE_VERSION {
+        return Err(format!(
+            "不支持的 bundle 版本：{version}（当前支持 ≤{BUNDLE_VERSION}）"
+        ));
+    }
+    let root = recordings_root(app);
     let new_id = unique_id(&root);
     let dir = root.join(&new_id);
-    write_import_bundle(&dir, &v, &new_id)?;
+    let tmp = root.join(format!("{new_id}.tmp"));
+    // 原子写：先写临时目录，成功后 rename；任一步失败清理 tmp，不污染 recordings/
+    if tmp.exists() {
+        let _ = fs::remove_dir_all(&tmp);
+    }
+    match write_import_bundle(&tmp, &v, &new_id) {
+        Ok(()) => fs::rename(&tmp, &dir).map_err(|e| {
+            let _ = fs::remove_dir_all(&tmp);
+            e.to_string()
+        })?,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&tmp);
+            return Err(e);
+        }
+    }
     Ok(new_id)
+}
+
+/// 导入会话 JSON bundle（内容直传；小文件 / 云端上传路径）。
+#[tauri::command]
+fn import_session(app: AppHandle, content: String) -> Result<String, String> {
+    import_session_content(&app, &content)
+}
+
+/// 从文件路径导入会话 bundle（Rust 侧读文件，避免大 JSON 过 IPC）。
+#[tauri::command]
+fn import_session_path(app: AppHandle, path: String) -> Result<String, String> {
+    let content = fs::read_to_string(&path).map_err(|e| format!("读取文件失败：{e}"))?;
+    import_session_content(&app, &content)
 }
 
 #[tauri::command]
@@ -393,12 +450,53 @@ mod tests {
         assert!(v2.get("name").is_none());
         assert!(v2.get("note").is_some()); // 其他字段保留
     }
+
+    /// segmentId 校验：合法的通过，含路径分隔符/`..` 的拒绝（路径穿越防护）。
+    #[test]
+    fn segment_id_validation() {
+        assert!(validate_segment_id("main#0"));
+        assert!(validate_segment_id("web#1"));
+        assert!(validate_segment_id("settings#12"));
+        assert!(validate_segment_id("a-b_c#9"));
+        // 非法：路径穿越企图
+        assert!(!validate_segment_id("../etc#0"));
+        assert!(!validate_segment_id("a/..#1"));
+        assert!(!validate_segment_id("a\\b#1"));
+        // 非法：其他形态
+        assert!(!validate_segment_id("a#b")); // n 非数字
+        assert!(!validate_segment_id("#1")); // label 空
+        assert!(!validate_segment_id("a#")); // n 空
+        assert!(!validate_segment_id("a")); // 无 #
+    }
+
+    /// 含恶意 segment key 的 bundle 必须被拒绝，恶意文件不得落盘（路径穿越防护）。
+    #[test]
+    fn import_rejects_path_traversal() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("dst");
+        let bundle = json!({
+            "format": BUNDLE_FORMAT,
+            "version": BUNDLE_VERSION,
+            "session": {"id":"x","startedAt":1},
+            "windows": [],
+            "segments": { "../evil#0": [{"type":2,"timestamp":1}] },
+            "annotations": [],
+        });
+        let err = write_import_bundle(&dir, &bundle, "dst").unwrap_err();
+        assert!(err.contains("路径穿越"), "got: {err}");
+        // 未写穿：traversal 目标文件不应存在（无校验时会落到 dst/evil#0.jsonl）
+        assert!(
+            !dir.join("evil#0.jsonl").exists(),
+            "恶意 segment 不得落盘到段目录之外"
+        );
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         // 录制协调逻辑已抽成 tauri-plugin-observer（Local 模式 = self-obs 落盘）。
         // skip_focus_prefix "player-" 与 console 原行为一致：回放窗不参与录制。
         .plugin(tauri_plugin_observer::init_with(
@@ -431,6 +529,7 @@ pub fn run() {
             update_session_meta,
             export_session,
             import_session,
+            import_session_path,
             ingest::get_ingest_config,
             ingest::set_ingest_config,
         ])

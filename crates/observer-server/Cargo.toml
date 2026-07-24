@@ -19,6 +19,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # 同步、轻量 HTTP server：串行处理本机回环 / 低并发自托管上报
 tiny_http = "0.12"
+# P9：响应体 gzip（Content-Encoding），大 bundle 传输压缩
+flate2 = "1"
 
 [dev-dependencies]
 tempfile = "3"

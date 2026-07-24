@@ -10,7 +10,7 @@ use std::path::Path;
 use serde_json::{json, Value};
 
 use crate::annotations::read_annotations;
-use crate::storage::now_ms;
+use crate::storage::{now_ms, read_segment_events, segment_id_from_filename};
 
 /// bundle 契约标识与版本（与 TS 侧 buildBundle/parseBundle 对齐，见 docs/架构/bundle-规范.md）。
 pub const BUNDLE_FORMAT: &str = "rrweb-demo-session";
@@ -34,6 +34,13 @@ pub fn validate_segment_id(id: &str) -> bool {
     n.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// session ID 合法性：纯数字（与 [`unique_id`] 生成器一致）。
+/// read API 的 `/sessions/:id` 直接 `root.join(id)`，未校验可被 `../` 跨租户逃逸。
+/// 多租户（P9）下这是必校验项；单租户也应校验。
+pub fn validate_session_id(id: &str) -> bool {
+    !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())
+}
+
 /// 分配不与本地已有会话冲突的新 id（毫秒时间戳，冲突则自增）。
 pub fn unique_id(root: &Path) -> String {
     let mut id = now_ms();
@@ -48,6 +55,7 @@ pub fn unique_id(root: &Path) -> String {
 
 /// 读会话目录组装成回放数据（session + windows + segments + annotations）。
 /// 供 console `read_session` 命令与 server `GET /sessions/:id` 共用。
+/// segments 读路径 gzip 感知（`.jsonl` / `.jsonl.gz` 均可），见 [`read_segment_events`]。
 pub fn read_session(dir: &Path) -> Result<Value, String> {
     let session = serde_json::from_str::<Value>(
         &fs::read_to_string(dir.join("session.json")).map_err(|e| e.to_string())?,
@@ -59,19 +67,7 @@ pub fn read_session(dir: &Path) -> Result<Value, String> {
         .and_then(|s| s.lines().map(|l| serde_json::from_str(l).ok()).collect())
         .unwrap_or_default();
 
-    let mut segments = serde_json::Map::new();
-    let seg_dir = dir.join("segments");
-    if let Ok(entries) = fs::read_dir(&seg_dir) {
-        for e in entries.flatten() {
-            let path = e.path();
-            let name = path.file_stem().unwrap().to_string_lossy().to_string();
-            let events: Vec<Value> = fs::read_to_string(&path)
-                .ok()
-                .and_then(|s| s.lines().map(|l| serde_json::from_str(l).ok()).collect())
-                .unwrap_or_default();
-            segments.insert(name, Value::Array(events));
-        }
-    }
+    let segments = read_segments_dir(dir);
     let annotations = read_annotations(dir);
     Ok(json!({ "session": session, "windows": windows, "segments": segments, "annotations": annotations }))
 }
@@ -92,6 +88,22 @@ pub fn list_sessions(root: &Path) -> Vec<Value> {
     out
 }
 
+/// 读 segments 目录所有段（gzip 感知），返回 segmentId -> events 映射。
+fn read_segments_dir(dir: &Path) -> Value {
+    let mut segments = serde_json::Map::new();
+    let seg_dir = dir.join("segments");
+    if let Ok(entries) = fs::read_dir(&seg_dir) {
+        for e in entries.flatten() {
+            let path = e.path();
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            let seg_id = segment_id_from_filename(&name).to_string();
+            let events = read_segment_events(&path);
+            segments.insert(seg_id, Value::Array(events));
+        }
+    }
+    Value::Object(segments)
+}
+
 /// 读会话目录组装成 export bundle（不依赖 AppHandle，便于测试）。
 pub fn build_export_bundle(dir: &Path) -> Result<Value, String> {
     let session = serde_json::from_str::<Value>(
@@ -102,19 +114,7 @@ pub fn build_export_bundle(dir: &Path) -> Result<Value, String> {
         .ok()
         .and_then(|s| s.lines().map(|l| serde_json::from_str(l).ok()).collect())
         .unwrap_or_default();
-    let mut segments = serde_json::Map::new();
-    let seg_dir = dir.join("segments");
-    if let Ok(entries) = fs::read_dir(&seg_dir) {
-        for e in entries.flatten() {
-            let path = e.path();
-            let name = path.file_stem().unwrap().to_string_lossy().to_string();
-            let events: Vec<Value> = fs::read_to_string(&path)
-                .ok()
-                .and_then(|s| s.lines().map(|l| serde_json::from_str(l).ok()).collect())
-                .unwrap_or_default();
-            segments.insert(name, Value::Array(events));
-        }
-    }
+    let segments = read_segments_dir(dir);
     let annotations = read_annotations(dir);
     Ok(json!({
         "format": BUNDLE_FORMAT,
@@ -371,6 +371,23 @@ mod tests {
         assert!(!validate_segment_id("a")); // 无 #
     }
 
+    /// session ID 校验：纯数字通过，含 `..`/`/`/字母 被拒（read API 路径穿越防护）。
+    #[test]
+    fn session_id_validation() {
+        assert!(validate_session_id("1750000000000"));
+        assert!(validate_session_id("0"));
+        assert!(validate_session_id("123456789"));
+        // 非法：路径穿越企图
+        assert!(!validate_session_id("../1"));
+        assert!(!validate_session_id("1/2"));
+        assert!(!validate_session_id(".."));
+        // 非法：非纯数字
+        assert!(!validate_session_id("abc"));
+        assert!(!validate_session_id("1a"));
+        assert!(!validate_session_id(""));
+        assert!(!validate_session_id("1-2"));
+    }
+
     /// 含恶意 segment key 的 bundle 必须被拒绝，恶意文件不得落盘（路径穿越防护）。
     #[test]
     fn import_rejects_path_traversal() {
@@ -430,5 +447,38 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(dir.join("session.json")).unwrap()).unwrap();
         assert_eq!(session["id"], new_id);
         assert_eq!(session["source"], "web");
+    }
+
+    /// read_session 支持 gzip segment 文件（混合 plain + gz 目录）。
+    #[test]
+    fn read_session_with_gzip_segments() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            &dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+        // 一个 plain segment + 一个 gzip segment
+        crate::storage::append_events_file(
+            &dir,
+            "plain#0",
+            &[json!({"type":2,"timestamp":1})],
+        )
+        .unwrap();
+        crate::storage::append_events_file_with(
+            &dir,
+            "gz#0",
+            &[json!({"type":2,"timestamp":2}), json!({"type":6,"timestamp":3})],
+            &crate::storage::WriteOpts::gzip(),
+        )
+        .unwrap();
+
+        let data = read_session(&dir).unwrap();
+        let segs = data["segments"].as_object().unwrap();
+        assert_eq!(segs.len(), 2);
+        assert_eq!(segs["plain#0"].as_array().unwrap().len(), 1);
+        assert_eq!(segs["gz#0"].as_array().unwrap().len(), 2);
     }
 }

@@ -11,6 +11,7 @@ type IngestStatus = {
   enabled: boolean;
   port: number;
   token: string;
+  retainMax: number;
   listening: boolean;
   addr: string | null;
 };
@@ -43,6 +44,7 @@ async function load() {
     form.serverEnabled = s.enabled;
     form.serverPort = s.port;
     form.serverToken = s.token;
+    form.retainMax = s.retainMax;
   } catch (e) {
     ElMessage.error(`读取接收配置失败: ${e}`);
   }
@@ -55,6 +57,7 @@ async function save() {
         enabled: form.serverEnabled,
         port: form.serverPort,
         token: form.serverToken,
+        retainMax: form.retainMax,
       },
     });
     ElMessage.success("接收设置已保存（端口修改重启生效）");

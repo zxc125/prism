@@ -10,6 +10,10 @@ license = "MIT"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# P9：segments gzip 落盘（MultiGzDecoder 读 concatenate members）
+flate2 = "1"
+# P9：服务端 redaction scrubbers
+regex = "1"
 
 [dev-dependencies]
 tempfile = "3"

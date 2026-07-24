@@ -1,0 +1,24 @@
+[
+  {
+    "key": "sk_acme_prod",
+    "tenantId": "acme",
+    "appIds": ["shop-web", "shop-admin"],
+    "quotaBytes": 5368709120,
+    "retention": { "maxAgeDays": 30, "maxSessions": 5000 },
+    "redact": {
+      "stripNetworkBody": true,
+      "stripNetworkHeaders": true,
+      "scrubbers": [
+        "Bearer\\s+[\\w.-]+",
+        "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+"
+      ]
+    },
+    "rateLimit": { "maxRpm": 600 }
+  },
+  {
+    "key": "sk_beta_dev",
+    "tenantId": "beta",
+    "appIds": [],
+    "retention": { "maxSessions": 200 }
+  }
+]

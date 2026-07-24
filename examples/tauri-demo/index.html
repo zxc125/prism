@@ -93,6 +93,48 @@
       .endpoint {
         color: #C8893A;
       }
+      .config {
+        margin-bottom: 16px;
+      }
+      .config summary {
+        font-size: 12px;
+        color: #888;
+        cursor: pointer;
+        margin-bottom: 8px;
+        user-select: none;
+      }
+      .config-row {
+        display: flex;
+        gap: 6px;
+      }
+      .config-row input {
+        flex: 1;
+        appearance: none;
+        border: 1px solid #444;
+        background: #2a2a2a;
+        color: #e8e6e1;
+        font-size: 12px;
+        font-family: ui-monospace, monospace;
+        padding: 6px 10px;
+        border-radius: 6px;
+        min-width: 0;
+      }
+      .config-row input:focus {
+        border-color: #C8893A;
+        outline: none;
+      }
+      .config-row button {
+        flex-shrink: 0;
+      }
+      .config-hint {
+        margin-top: 6px;
+        font-size: 11px;
+        color: #666;
+        font-family: ui-monospace, monospace;
+      }
+      .config-hint code {
+        color: #C8893A;
+      }
     </style>
   </head>
   <body>
@@ -104,6 +146,15 @@
       <span class="dot" id="dot"></span>
       <span id="status">初始化…</span>
     </div>
+    <details class="config">
+      <summary>上报配置（endpoint / token）</summary>
+      <div class="config-row">
+        <input id="cfg-endpoint" placeholder="http://127.0.0.1:1421" />
+        <input id="cfg-token" placeholder="token（可选）" type="password" />
+        <button id="cfg-apply">应用并重载</button>
+      </div>
+      <div class="config-hint">切云端：填 <code>http://127.0.0.1:18099</code> + server 的 token，应用后重载生效</div>
+    </details>
     <div class="row">
       <button class="primary" onclick="openChild()">＋ 开子窗口</button>
       <button onclick="logThings()">console.log</button>

@@ -2,8 +2,36 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { initTauri, type TauriController } from "@rrweb-demo/observer-tauri";
 
-// 指向 console 的本地 HTTP server（端口/token 见 console 设置页）。
-const ENDPOINT = "http://127.0.0.1:1421";
+// 上报目标可热切：localStorage 持久化 + 应用内配置 UI（默认本地 server，可切云端 observer-server）。
+const STORAGE_KEY = "observer-tauri-demo";
+const DEFAULT_ENDPOINT = "http://127.0.0.1:1421";
+
+interface DemoConfig {
+  endpoint: string;
+  token: string;
+}
+
+function loadConfig(): DemoConfig {
+  // URL 参数优先（浏览器直开 / `?endpoint=...&token=...`），命中即落 localStorage 持久化
+  const params = new URLSearchParams(window.location.search);
+  const ep = params.get("endpoint");
+  if (ep) {
+    const cfg: DemoConfig = { endpoint: ep, token: params.get("token") || "" };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+    return cfg;
+  }
+  // 其次 localStorage
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return { endpoint: DEFAULT_ENDPOINT, token: "", ...JSON.parse(raw) };
+  } catch {
+    /* ignore */
+  }
+  return { endpoint: DEFAULT_ENDPOINT, token: "" };
+}
+
+const cfg = loadConfig();
+const ENDPOINT = cfg.endpoint;
 
 const label = getCurrentWebviewWindow().label;
 const isMain = !window.location.hash || window.location.hash === "#/";
@@ -11,12 +39,31 @@ const isMain = !window.location.hash || window.location.hash === "#/";
 document.getElementById("win")!.textContent = label;
 document.getElementById("endpoint")!.textContent = ENDPOINT;
 
+// 配置 UI：回填当前值，「应用」= 存 localStorage + reload（重新 initTauri 到新 endpoint）
+const epInput = document.getElementById("cfg-endpoint") as HTMLInputElement;
+const tkInput = document.getElementById("cfg-token") as HTMLInputElement;
+epInput.value = cfg.endpoint;
+tkInput.value = cfg.token;
+document.getElementById("cfg-apply")!.addEventListener("click", () => {
+  const ep = epInput.value.trim();
+  if (!ep) {
+    alert("endpoint 不能为空");
+    return;
+  }
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({ endpoint: ep, token: tkInput.value.trim() }),
+  );
+  location.reload();
+});
+
 const dotEl = document.getElementById("dot")!;
 const statusEl = document.getElementById("status")!;
 
 initTauri({
   appId: "tauri-demo",
   endpoint: ENDPOINT,
+  token: cfg.token || undefined,
   env: "dev",
   release: "0.1.0",
   autoStart: isMain,

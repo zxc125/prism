@@ -2005,6 +2005,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "observer-storage"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3082,6 +3090,7 @@ dependencies = [
 name = "tauri-plugin-observer"
 version = "0.1.0"
 dependencies = [
+ "observer-storage",
  "serde",
  "serde_json",
  "tauri",

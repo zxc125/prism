@@ -1,0 +1,45 @@
+<svg viewBox="0 0 1200 630" width="1200" height="630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="32%" r="65%">
+      <stop offset="0%" stop-color="#161C26" />
+      <stop offset="100%" stop-color="#0A0C10" />
+    </radialGradient>
+    <radialGradient id="amber-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F0A83D" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#F0A83D" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="teal-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#4DD0C8" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#4DD0C8" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- 底 -->
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <ellipse cx="420" cy="240" rx="320" ry="200" fill="url(#amber-glow)" />
+  <ellipse cx="780" cy="360" rx="320" ry="200" fill="url(#teal-glow)" />
+
+  <!-- 棱镜 logo（R1 聚心，放大） -->
+  <svg x="461" y="120" width="278" height="181" viewBox="0 0 80 52">
+    <polygon points="20,26 40,8 60,26 40,44" fill="rgba(230,234,240,0.05)" stroke="rgba(230,234,240,0.45)" stroke-width="1.2" stroke-linejoin="round" />
+    <line x1="2" y1="26" x2="40" y2="26" stroke="#E6EAF0" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="40" y1="26" x2="78" y2="8" stroke="#F0A83D" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="40" y1="26" x2="78" y2="44" stroke="#4DD0C8" stroke-width="2.5" stroke-linecap="round" />
+    <circle cx="40" cy="26" r="2.8" fill="#E6EAF0" />
+  </svg>
+
+  <!-- 字标 -->
+  <text x="600" y="395" text-anchor="middle" font-family="-apple-system, 'PingFang SC', 'Segoe UI', sans-serif" font-size="72" font-weight="700" fill="#E6EAF0" letter-spacing="2">鉴 / Prism</text>
+
+  <!-- 棱镜分光 beam 分隔 -->
+  <g transform="translate(525, 430)">
+    <rect x="0" y="0" width="55" height="3" rx="1.5" fill="#F0A83D" />
+    <rect x="60" y="0" width="55" height="3" rx="1.5" fill="#4DD0C8" />
+  </g>
+
+  <!-- tagline -->
+  <text x="600" y="495" text-anchor="middle" font-family="-apple-system, 'PingFang SC', 'Segoe UI', sans-serif" font-size="26" fill="#8B94A3">本地优先的前端观测平台 · 数据留在你手里，不上云，不锁仓</text>
+
+  <!-- 底部 mono meta -->
+  <text x="600" y="560" text-anchor="middle" font-family="'SF Mono', 'JetBrains Mono', monospace" font-size="18" fill="#5C6573" letter-spacing="3">SESSION REPLAY · INTERLEAVED SIGNALS · MULTI-WINDOW</text>
+</svg>

@@ -46,3 +46,103 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
+/* ===== 共享 section 原语（P11 营销站布局基线） =====
+ * 与 HeroSection / DiagnosisSection 的 scoped 样式同源，供新增 section 复用，
+ * 保持全站排版一致。scoped 同名类特异性更高，不冲突。 */
+.section {
+  position: relative;
+  padding: 6rem 2rem 6.5rem;
+  border-top: 1px solid var(--color-hair);
+}
+.section-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+.section-head {
+  max-width: 46rem;
+  margin-bottom: 3.5rem;
+}
+.section-head.center {
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+.eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  color: var(--color-ash);
+  text-transform: uppercase;
+  margin: 0 0 1.25rem;
+}
+.section-h2 {
+  font-size: clamp(1.875rem, 4vw, 2.75rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--color-bone);
+  margin: 0 0 1.25rem;
+}
+.section-sub {
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--color-ash);
+  margin: 0;
+}
+.accent-amber { color: var(--color-amber); }
+.accent-teal { color: var(--color-teal); }
+.accent-oxblood { color: var(--color-oxblood); }
+.mono { font-family: var(--font-mono); }
+
+/* buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.625rem 1.125rem;
+  border-radius: 6px;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.btn.lg {
+  font-size: 0.9375rem;
+  padding: 0.75rem 1.375rem;
+}
+.btn-primary {
+  background: var(--color-amber);
+  color: var(--color-ink);
+}
+.btn-primary:hover {
+  background: var(--color-amber-soft);
+  box-shadow: 0 0 16px rgba(240, 168, 61, 0.35);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--color-bone);
+  border-color: var(--color-hair);
+}
+.btn-ghost:hover {
+  border-color: var(--color-ash);
+  background: var(--color-slate);
+}
+
+/* tag / chip */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-hair);
+  color: var(--color-ash);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+a { color: inherit; }

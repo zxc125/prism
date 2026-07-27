@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+/*
+ * 品牌 token - 映射自 src/styles/theme.css（P10「现代科技感」）
+ * Tailwind v4 CSS-first：@theme 块定义的 token 自动生成工具类（bg-ink / text-amber / ...）
+ * 视觉原型走 /frontend-design 出稿后，本文件只增不改 token 值
+ */
+@theme {
+  /* 底色 · 深空感 */
+  --color-ink: #0a0c10;
+  --color-ink-2: #0e1117;
+  --color-slate: #11141a;
+  --color-slate-2: #181c24;
+  --color-slate-3: #1f242e;
+  --color-hair: #1f242e;
+
+  /* 文字 */
+  --color-bone: #e6eaf0;
+  --color-bone-dim: #b8c0cc;
+  --color-ash: #8b94a3;
+  --color-ash-deep: #5c6573;
+
+  /* 信号主色 · 琥珀（DOM 流 / 激活 / 实时） */
+  --color-amber: #f0a83d;
+  --color-amber-soft: #ffc062;
+  --color-amber-deep: #b07a28;
+
+  /* 数据辅色 · 冷青（网络 / 信息流）- 与琥珀暖冷对比即棱镜双光谱 */
+  --color-teal: #4dd0c8;
+  --color-teal-soft: #6fe0d8;
+  --color-teal-deep: #2ea39c;
+
+  /* 危险 / REC */
+  --color-oxblood: #e5484d;
+
+  /* 字体 */
+  --font-sans:
+    -apple-system, blinkmacsystemfont, "pingfang sc", "segoe ui", roboto, sans-serif;
+  --font-mono: "sf mono", "jetbrains mono", ui-monospace, monospace;
+}
+
+html,
+body {
+  background-color: var(--color-ink);
+  color: var(--color-bone);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}

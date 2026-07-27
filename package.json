@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "build:sdk": "pnpm --filter @rrweb-demo/observer-sdk build",
-    "dev:web-demo": "pnpm --filter web-demo dev"
+    "dev:web-demo": "pnpm --filter web-demo dev",
+    "dev:site": "pnpm --filter site dev",
+    "build:site": "pnpm --filter site build"
   },
   "dependencies": {
     "@rrweb-demo/observer-sdk": "workspace:*",

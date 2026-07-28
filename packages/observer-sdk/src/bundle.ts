@@ -1,11 +1,11 @@
-//! bundle 契约的 TS 实现：rrweb-demo-session 格式的 build / parse / 校验。
+//! bundle 契约的 TS 实现：prism-session 格式的 build / parse / 校验。
 //! 与 Rust 侧 build_export_bundle / write_import_bundle 对齐，规范见
 //! docs/架构/bundle-规范.md。三条投递路径（本地文件 / 云端上传 / 离线 SDK）共用。
 
 import type { OfflineSessionData, RREvent } from "./types";
 
 /** bundle 标识与版本。改字段语义时 bump version，import 侧按版本分支。 */
-export const BUNDLE_FORMAT = "rrweb-demo-session" as const;
+export const BUNDLE_FORMAT = "prism-session" as const;
 export const BUNDLE_VERSION = 1 as const;
 
 /**
@@ -19,7 +19,7 @@ export function validateSegmentId(id: string): boolean {
   return SEGMENT_ID_RE.test(id);
 }
 
-/** rrweb-demo-session bundle 的 TS 类型。 */
+/** prism-session bundle 的 TS 类型。 */
 export interface Bundle {
   format: typeof BUNDLE_FORMAT;
   version: number;

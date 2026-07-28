@@ -1,6 +1,6 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { SegmentRecorder } from "@rrweb-demo/observer-sdk";
+import { SegmentRecorder } from "@prism/observer-sdk";
 import { TauriSink } from "./sink";
 
 /**

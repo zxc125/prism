@@ -53,9 +53,9 @@ export interface Annotation {
   createdAt: number;
 }
 
-/** rrweb-demo-session bundle（export/import 契约，见 docs/架构/bundle-规范.md）。 */
+/** prism-session bundle（export/import 契约，见 docs/架构/bundle-规范.md）。 */
 export interface Bundle {
-  format: "rrweb-demo-session";
+  format: "prism-session";
   version: number;
   exportedAt?: number;
   session: SessionMeta;

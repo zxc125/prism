@@ -42,7 +42,7 @@ const links = [
     <div class="nav-actions">
       <a
         class="nav-gh"
-        href="https://github.com"
+        href="https://github.com/zxc125/prism"
         rel="noreferrer"
         target="_blank"
         aria-label="GitHub"

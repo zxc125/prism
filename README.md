@@ -27,18 +27,18 @@
 - **交错事件模型** -- error / console / network 作为 `type:6` 交错进 DOM 事件流，共享同一条时间轴
 - **诊断导向** -- 不做告警 / RUM 指标，专注复现 -> 看懂 -> 标注 -> 分享
 - **单二进制自托管** -- `observer-server` 一个文件托管 API + 前端
-- **开放 bundle 契约** -- `rrweb-demo-session` 明文 JSON，三路共用，随时带走
+- **开放 bundle 契约** -- `prism-session` 明文 JSON，三路共用，随时带走
 
 ## 快速开始
 
 **嵌入你的应用**（Web SDK）：
 
 ```sh
-pnpm add @rrweb-demo/observer-sdk
+pnpm add @prism/observer-sdk
 ```
 
 ```ts
-import { recordOffline } from "@rrweb-demo/observer-sdk";
+import { recordOffline } from "@prism/observer-sdk";
 recordOffline({ endpoint: "http://localhost:8080/ingest" });
 ```
 
@@ -55,7 +55,7 @@ observer-server \
 
 ```
 ┌─ Console / Player UI        Vue 3 · 多轨时间轴 · 诊断信号流
-├─ bundle 契约                 rrweb-demo-session（明文 JSON，跨进程迁移）
+├─ bundle 契约                 prism-session（明文 JSON，跨进程迁移）
 ├─ Rust 核心                   observer-storage / observer-server
 └─ rrweb 2 · 彽制基座           DOM 快照 + 增量 · type:6 交错诊断信号
 ```
@@ -63,7 +63,7 @@ observer-server \
 ## 仓库结构
 
 ```
-rrweb-demo/
+prism/
 ├─ src/                      # console 应用（Vue 3 + Element Plus）
 ├─ src-tauri/                # Tauri 2 桌面壳
 ├─ crates/
@@ -72,7 +72,7 @@ rrweb-demo/
 ├─ plugins/
 │  └─ tauri-plugin-observer/ # 录制协调插件（Local + Remote 双模式）
 ├─ packages/
-│  ├─ observer-sdk/          # @rrweb-demo/observer-sdk（Web SDK，HttpSink + IndexedDBSink）
+│  ├─ observer-sdk/          # @prism/observer-sdk（Web SDK，HttpSink + IndexedDBSink）
 │  └─ observer-tauri/        # Tauri App 接入驱动
 ├─ examples/
 │  ├─ web-demo/              # Web SDK 样例

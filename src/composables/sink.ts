@@ -4,12 +4,12 @@ import type {
   RREvent,
   SessionMeta,
   Sink,
-} from "@rrweb-demo/observer-sdk";
+} from "@prism/observer-sdk";
 
 // 传输抽象与外部 Sink 实现下沉到 observer-sdk 包，本文件只保留 self-obs 专用的 TauriSink。
-export type { LifecycleEvent, RREvent, SessionMeta, Sink } from "@rrweb-demo/observer-sdk";
-export { HttpSink, IndexedDBSink } from "@rrweb-demo/observer-sdk";
-export type { HttpSinkOptions } from "@rrweb-demo/observer-sdk";
+export type { LifecycleEvent, RREvent, SessionMeta, Sink } from "@prism/observer-sdk";
+export { HttpSink, IndexedDBSink } from "@prism/observer-sdk";
+export type { HttpSinkOptions } from "@prism/observer-sdk";
 
 /**
  * console 自录 Sink：包装 tauri-plugin-observer 的命令（`plugin:observer|*`）。

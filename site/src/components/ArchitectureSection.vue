@@ -13,7 +13,7 @@ const layers = [
   },
   {
     icon: FileJson,
-    name: "bundle 契约 · rrweb-demo-session",
+    name: "bundle 契约 · prism-session",
     sub: "明文 JSON · 三路共用 · 跨进程/跨机迁移唯一契约",
     color: "teal",
   },
@@ -32,7 +32,7 @@ const layers = [
 ];
 
 const bundleLines = [
-  { tok: "key", v: '"format"', s: '"rrweb-demo-session"' },
+  { tok: "key", v: '"format"', s: '"prism-session"' },
   { tok: "key", v: '"version"', s: "1" },
   { tok: "key", v: '"session"', s: '{ "id": "1721908482", "startedAt": "…" }' },
   { tok: "key", v: '"windows"', s: '[ /* shown/hidden/focus 生命周期 */ ]' },
@@ -83,7 +83,7 @@ const bundleLines = [
               <span class="code-dot dot-r" />
               <span class="code-dot dot-y" />
               <span class="code-dot dot-g" />
-              <span class="code-title mono">rrweb-demo-session.bundle.json</span>
+              <span class="code-title mono">prism-session.bundle.json</span>
             </div>
             <pre class="code-body mono"><code><span class="code-line"><span class="p">{</span></span><span
               v-for="(l, i) in bundleLines"

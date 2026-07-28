@@ -22,7 +22,7 @@ const beliefs = [
   {
     k: "04",
     t: "开放契约优先于封闭",
-    d: "rrweb-demo-session 是明文 JSON 规范，本地文件 / 本地 server / 云端上传三路共用。随时带走，随时删干净。",
+    d: "prism-session 是明文 JSON 规范，本地文件 / 本地 server / 云端上传三路共用。随时带走，随时删干净。",
   },
 ];
 </script>

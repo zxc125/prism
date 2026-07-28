@@ -13,7 +13,7 @@ use crate::annotations::read_annotations;
 use crate::storage::{now_ms, read_segment_events, segment_id_from_filename};
 
 /// bundle 契约标识与版本（与 TS 侧 buildBundle/parseBundle 对齐，见 docs/架构/bundle-规范.md）。
-pub const BUNDLE_FORMAT: &str = "rrweb-demo-session";
+pub const BUNDLE_FORMAT: &str = "prism-session";
 pub const BUNDLE_VERSION: i64 = 1;
 
 /// segmentId 合法性：`<label>#<n>`，label 仅 [A-Za-z0-9_-]。
@@ -283,7 +283,7 @@ mod tests {
 
         // 导出
         let bundle = build_export_bundle(&src).unwrap();
-        assert_eq!(bundle["format"], "rrweb-demo-session");
+        assert_eq!(bundle["format"], "prism-session");
         assert_eq!(bundle["session"]["id"], "session-001");
         assert_eq!(bundle["session"]["source"], "self");
         assert_eq!(bundle["windows"].as_array().unwrap().len(), 2);

@@ -18,7 +18,7 @@ import {
   SegmentRecorder,
   type SessionMeta,
   type SignalSet,
-} from "@rrweb-demo/observer-sdk";
+} from "@prism/observer-sdk";
 
 export interface InitTauriOptions {
   /** 应用标识，随会话上报，用于 console 侧区分来源。 */
@@ -166,5 +166,5 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
 }
 
 // 复用 SDK 构件导出
-export { HttpSink, SegmentRecorder } from "@rrweb-demo/observer-sdk";
-export type { InitOptions } from "@rrweb-demo/observer-sdk";
+export { HttpSink, SegmentRecorder } from "@prism/observer-sdk";
+export type { InitOptions } from "@prism/observer-sdk";

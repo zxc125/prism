@@ -104,7 +104,7 @@ export interface OfflineController {
 
 /**
  * 在被观测 web 应用中离线录制：SegmentRecorder + IndexedDBSink，不连 console。
- * 事件实时落 IndexedDB，后续可 export 成 rrweb-demo-session bundle，下载或上传 console。
+ * 事件实时落 IndexedDB，后续可 export 成 prism-session bundle，下载或上传 console。
  *
  * 与 init()（HttpSink 实时上报）并列，差别仅在 Sink。
  * 注意：rrweb 事件经 SegmentRecorder 缓冲（默认 1s flush），页面突然关闭可能丢失

@@ -189,7 +189,7 @@ mod tests {
 
     fn bundle_with_events(events: Vec<Value>) -> Value {
         json!({
-            "format": "rrweb-demo-session",
+            "format": "prism-session",
             "version": 1,
             "session": { "id": "s1", "url": "https://app.example.com/?token=secret123" },
             "windows": [],

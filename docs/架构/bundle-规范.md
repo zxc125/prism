@@ -1,4 +1,4 @@
-# bundle 规范（rrweb-demo-session）
+# bundle 规范（prism-session）
 
 会话跨进程/跨机迁移的唯一 interchange 契约。TS 实现（[`packages/observer-sdk/src/bundle.ts`](../../packages/observer-sdk/src/bundle.ts)）与 Rust 实现（[`src-tauri/src/lib.rs`](../../src-tauri/src/lib.rs) `build_export_bundle`/`write_import_bundle`）共同遵守本规范。
 
@@ -6,7 +6,7 @@
 
 ```json
 {
-  "format": "rrweb-demo-session",
+  "format": "prism-session",
   "version": 1,
   "exportedAt": 1750000000000,
   "session": { ... },
@@ -18,7 +18,7 @@
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `format` | string | 固定 `"rrweb-demo-session"`，标识本规范 |
+| `format` | string | 固定 `"prism-session"`，标识本规范 |
 | `version` | number | 格式版本，当前 `1`。import 侧拒绝高于已知的版本 |
 | `exportedAt` | number | 导出时间（epoch ms） |
 | `session` | object | `session.json` 内容（见下） |

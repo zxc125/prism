@@ -46,7 +46,7 @@ const caps = [
     icon: FileJson,
     accent: "teal",
     title: "开放 bundle 契约",
-    desc: "rrweb-demo-session 明文 JSON 规范，本地 / server / 云端三路共用。随时带走。",
+    desc: "prism-session 明文 JSON 规范，本地 / server / 云端三路共用。随时带走。",
   },
 ];
 </script>

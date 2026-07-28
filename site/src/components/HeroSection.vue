@@ -82,7 +82,7 @@ function formatTc(s: number): string {
       <nav class="topnav">
         <a class="navlink" href="#diagnosis">诊断</a>
         <a class="navlink" href="#deploy">部署</a>
-        <a class="navlink" href="https://github.com" rel="noreferrer">GitHub</a>
+        <a class="navlink" href="https://github.com/zxc125/prism" rel="noreferrer">GitHub</a>
         <a class="btn btn-primary" href="#quickstart">自托管 →</a>
       </nav>
     </header>

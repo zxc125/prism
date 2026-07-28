@@ -1,4 +1,4 @@
-import { init, type Controller } from "@rrweb-demo/observer-sdk";
+import { init, type Controller } from "@prism/observer-sdk";
 
 // 指向 console 的本地 HTTP server（端口/ token 见 console 设置页）。
 // 若设置了 token，把同一 token 传进来。

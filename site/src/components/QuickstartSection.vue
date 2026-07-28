@@ -6,8 +6,8 @@ import GithubIcon from "./GithubIcon.vue";
 import Reveal from "./Reveal.vue";
 
 const sdkSteps = [
-  { prompt: "$", cmd: "pnpm add @rrweb-demo/observer-sdk", note: "或 npm / yarn" },
-  { prompt: ">", cmd: 'import { recordOffline } from "@rrweb-demo/observer-sdk"', note: "一行接入" },
+  { prompt: "$", cmd: "pnpm add @prism/observer-sdk", note: "或 npm / yarn" },
+  { prompt: ">", cmd: 'import { recordOffline } from "@prism/observer-sdk"', note: "一行接入" },
   { prompt: ">", cmd: 'recordOffline({ endpoint: "http://localhost:8080/ingest" })', note: "断网照录，恢复回传" },
 ];
 
@@ -87,7 +87,7 @@ const serverSteps = [
         <div class="qs-cta">
           <a
             class="btn btn-primary lg"
-            href="https://github.com"
+            href="https://github.com/zxc125/prism"
             rel="noreferrer"
             target="_blank"
           >

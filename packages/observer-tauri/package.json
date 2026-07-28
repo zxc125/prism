@@ -1,5 +1,5 @@
 {
-  "name": "@rrweb-demo/observer-tauri",
+  "name": "@prism/observer-tauri",
   "version": "0.1.0",
   "description": "本地优先前端观测平台 · Tauri Plugin 采集端（Remote 模式驱动）",
   "type": "module",
@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@rrweb-demo/observer-sdk": "workspace:*",
+    "@prism/observer-sdk": "workspace:*",
     "@tauri-apps/api": "^2"
   },
   "peerDependencies": {

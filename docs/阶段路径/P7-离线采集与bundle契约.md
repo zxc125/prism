@@ -4,7 +4,7 @@
 
 ## 目标
 
-1. **离线闭环**：被观测 web 应用不连 console 也能录制，导出 `rrweb-demo-session` bundle，上传 console 回放。
+1. **离线闭环**：被观测 web 应用不连 console 也能录制，导出 `prism-session` bundle，上传 console 回放。
 2. **bundle 统一契约**：三路投递（本地文件 / 本地 server / 云端上传）收敛到同一 bundle 格式，TS 与 Rust 共守规范。
 3. **import 安全加固**：修路径穿越（B1）、加版本校验、原子写。
 

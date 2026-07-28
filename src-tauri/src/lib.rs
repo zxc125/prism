@@ -50,7 +50,7 @@ fn open_window(app: AppHandle, route: String) -> Result<String, String> {
         "player" => ("播放器", 960.0, 600.0),
         "live" => ("实时观测", 720.0, 640.0),
         "tenants" => ("租户", 640.0, 600.0),
-        _ => ("RRWeb Demo", 800.0, 600.0),
+        _ => ("Prism", 800.0, 600.0),
     };
     // 不在 URL 里带 hash：WebviewUrl::App 接收的是 PathBuf，Windows WebView2 上
     // # 不会被识别为 URL fragment（macOS WKWebView 会），子窗口会因路径解析失败

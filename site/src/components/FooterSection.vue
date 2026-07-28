@@ -26,7 +26,7 @@ const cols = [
   {
     title: "社区",
     links: [
-      { label: "GitHub", href: "https://github.com" },
+      { label: "GitHub", href: "https://github.com/zxc125/prism" },
       { label: "rrweb", href: "https://github.com/rrweb-io/rrweb" },
       { label: "Tauri", href: "https://tauri.app" },
     ],
@@ -55,7 +55,7 @@ const cols = [
           </p>
           <a
             class="footer-gh"
-            href="https://github.com"
+            href="https://github.com/zxc125/prism"
             rel="noreferrer"
             target="_blank"
           >

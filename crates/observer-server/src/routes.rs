@@ -520,7 +520,7 @@ mod tests {
             handle_read_route(root, "GET", &format!("/sessions/{sid}/export"), Value::Null, None).unwrap();
         assert_eq!(st, 200);
         let bundle: Value = serde_json::from_str(&export_body.unwrap()).unwrap();
-        assert_eq!(bundle["format"], "rrweb-demo-session");
+        assert_eq!(bundle["format"], "prism-session");
         assert_eq!(bundle["annotations"].as_array().unwrap().len(), 1);
 
         // POST /sessions/import (上传 bundle 到新 id)

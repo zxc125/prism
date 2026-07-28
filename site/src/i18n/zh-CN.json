@@ -1,0 +1,236 @@
+{
+  "meta": {
+    "title": "鉴 / Prism — 本地优先的前端观测平台",
+    "description": "本地优先的前端观测平台。会话回放、诊断信号、多窗口对齐——数据留在你手里，不上云，不锁仓。"
+  },
+  "nav": {
+    "wordmark": "鉴 / Prism",
+    "diagnosis": "诊断",
+    "multiwindow": "多窗口",
+    "deploy": "部署",
+    "compare": "对比",
+    "quickstart": "开始",
+    "cta": "自托管 →",
+    "ctaLabel": "自托管",
+    "github": "GitHub"
+  },
+  "hero": {
+    "eyebrow": "本地优先 · 不上云 · 不锁仓",
+    "h1_pre": "你的会话，",
+    "h1_br": true,
+    "h1_mid": "不必",
+    "h1_accent": "离开你的机器",
+    "h1_suf": "。",
+    "sub": "鉴 / Prism 是本地优先的前端观测平台。会话回放、诊断信号、多窗口对齐——error / console / network 交错进同一条时间轴，回放到第 3 秒，同时看到页面、那条 console.error、那个 500。",
+    "ctaPrimary": "自托管 →",
+    "ctaSecondary": "看诊断演示",
+    "foot": "REC · observer-sdk 一行接入 · 单二进制自托管",
+    "topnav": {
+      "diagnosis": "诊断",
+      "deploy": "部署",
+      "github": "GitHub",
+      "cta": "自托管 →"
+    }
+  },
+  "pain": {
+    "eyebrow": "痛点 · 云 RUM 的三重代价",
+    "h2_pre": "把会话传到云端，",
+    "h2_mid": "你付的不是钱，是",
+    "h2_accent": "控制权",
+    "h2_suf": "。",
+    "sub": "主流会话回放工具默认把用户数据上传第三方云，按 session 收费，格式私有。隐私、成本、锁仓——三重代价，你全都要付。",
+    "c1": { "tag": "隐私代价", "title": "用户会话上传到第三方云", "desc": "每一次点击、输入、网络请求都被传到别人服务器。金融、医疗、政企场景天然不可接受。" },
+    "c2": { "tag": "成本代价", "title": "按 session 收费，越用越贵", "desc": "per-session / per-seat 计费。流量上去不是扩容，是账单爆炸。导出自己的数据还要找销售。" },
+    "c3": { "tag": "锁仓代价", "title": "数据不在你手里", "desc": "会话存厂商托管，导出格式私有，迁移成本巨大。涨价、停服、改条款时，你没有退路。" }
+  },
+  "manifesto": {
+    "eyebrow": "本地优先宣言 · 我们相信什么",
+    "h2_pre": "数据留在你手里，",
+    "h2_mid": "是",
+    "h2_accent1": "默认",
+    "h2_between": "，不是",
+    "h2_accent2": "溢价套餐",
+    "h2_suf": "。",
+    "b1": { "t": "数据属于你", "d": "会话文件就是一份 JSON，存在你自己的磁盘。不经过任何第三方服务器，不开端口给云。" },
+    "b2": { "t": "本地是默认，不是可选", "d": "零云依赖即可运行。自托管私有云是 opt-in 拓扑，不是唯一路径。你不 own 数据就不算工具。" },
+    "b3": { "t": "诊断优先于监控", "d": "不做告警、不做 RUM 指标、不做漏斗热图。专注「复现 -> 看懂 -> 标注 -> 分享」这一条诊断闭环。" },
+    "b4": { "t": "开放契约优先于封闭", "d": "prism-session 是明文 JSON 规范，本地文件 / 本地 server / 云端上传三路共用。随时带走，随时删干净。" }
+  },
+  "capabilities": {
+    "eyebrow": "核心能力 · 六个记忆点",
+    "h2_pre": "每一条都",
+    "h2_accent": "站得住",
+    "h2_mid": "，",
+    "h2_suf": "不是 side feature 凑数。",
+    "sub": "从采集到部署，六个可一句话讲清的能力，每个都对应产品里一个真实机制，而非营销话术。",
+    "c1": { "title": "本地优先，数据不出本地", "desc": "默认零云依赖。用户数据不经任何第三方服务器，隐私天然合规，无厂商锁定。" },
+    "c2": { "title": "多窗口对齐录制，独家", "desc": "Tauri 多窗口共享墙上时钟，回放多轨同步。桌面应用调试的核心论点，别家做不到。" },
+    "c3": { "title": "交错事件模型", "desc": "error / console / network 作为 type:6 交错进 DOM 事件流，共享同一条时间轴，不跨流对齐。" },
+    "c4": { "title": "诊断导向，不是监控", "desc": "不做告警、不做 RUM 指标。专注复现 -> 看懂 -> 标注 -> 分享的诊断闭环。" },
+    "c5": { "title": "单二进制自托管", "desc": "observer-server 一个文件，API + 前端一起托管。内网、离线、合规审计都能用。" },
+    "c6": { "title": "开放 bundle 契约", "desc": "prism-session 明文 JSON 规范，本地 / server / 云端三路共用。随时带走。" }
+  },
+  "compare": {
+    "eyebrow": "竞品对比 · 对标矩阵",
+    "h2_pre": "同行做 RUM，",
+    "h2_mid": "我们做",
+    "h2_accent": "诊断闭环",
+    "h2_suf": "。",
+    "sub": "不是功能多寡的对比，是定位的分野。云 RUM 把数据搬走按 session 收费；鉴 / Prism 把数据留下，只做诊断这一件事。",
+    "dimCol": "维度",
+    "products": { "p1": "鉴 / Prism" },
+    "rows": {
+      "form": {
+        "cells": { "0": "默认形态", "1": "本地 / 自托管", "2": "云 SaaS", "3": "云", "4": "云优先", "5": "云", "6": "库" }
+      },
+      "sovereignty": {
+        "cells": { "0": "数据主权", "1": "完全自有", "2": "厂商托管", "3": "厂商托管", "4": "厂商托管", "5": "厂商托管", "6": "自有" }
+      },
+      "pricing": {
+        "cells": { "0": "计费", "1": "无 / 自托管成本", "2": "per-session", "3": "套餐内", "4": "per-session", "5": "per-session", "6": "免费" }
+      },
+      "multiwindow": {
+        "cells": { "0": "多窗口对齐", "1": "独家", "2": "", "3": "", "4": "", "5": "", "6": "" }
+      },
+      "diagnosis": {
+        "cells": { "0": "诊断信号交错", "1": "同一时间轴", "2": "独立面板", "3": "偏 error", "4": "独立面板", "5": "独立面板", "6": "需自建" }
+      },
+      "positioning": {
+        "cells": { "0": "定位", "1": "诊断工具", "2": "RUM / 分析", "3": "错误追踪", "4": "RUM", "5": "产品分析", "6": "录回放库" }
+      },
+      "alerts": {
+        "cells": { "0": "告警 / RUM", "1": "不做", "2": "做", "3": "做", "4": "做", "5": "做", "6": "" }
+      },
+      "desktop": {
+        "cells": { "0": "桌面 App", "1": "有", "2": "", "3": "", "4": "", "5": "", "6": "" }
+      },
+      "contract": {
+        "cells": { "0": "开放数据契约", "1": "有", "2": "", "3": "", "4": "部分", "5": "", "6": "N/A" }
+      }
+    }
+  },
+  "architecture": {
+    "eyebrow": "架构透明 · 没有黑盒",
+    "h2_pre": "建在",
+    "h2_accent1": "rrweb",
+    "h2_mid": "之上，",
+    "h2_suf1": "核心是",
+    "h2_accent2": "Rust",
+    "h2_suf2": "，契约是",
+    "h2_accent3": "明文 JSON",
+    "h2_suf3": "。",
+    "sub": "不靠魔法。录制基座是开源 rrweb 2，存储与 server 是独立 Rust crate，跨进程迁移走明文 JSON 契约。每一层都可读、可审计、可替换。",
+    "l1": { "name": "Console / Player UI", "sub": "Vue 3 · 多轨时间轴 · 诊断信号流 · Backend 抽象" },
+    "l2": { "name": "bundle 契约 · prism-session", "sub": "明文 JSON · 三路共用 · 跨进程/跨机迁移唯一契约" },
+    "l3": { "name": "Rust 核心 · observer-storage / observer-server", "sub": "落盘 · HTTP API · 多租户 · gzip · 服务端 redact · 限流" },
+    "l4": { "name": "rrweb 2 · 录制基座", "sub": "DOM 快照 + 增量 · type:6 plugin 交错诊断信号" },
+    "bundle": {
+      "session": "{ \"id\": \"1721908482\", \"startedAt\": \"…\" }",
+      "windows": "[ /* shown/hidden/focus 生命周期 */ ]",
+      "segments": "[ /* rrweb 事件流（含 type:6 交错） */ ]",
+      "annotations": "[ /* 用户标注，session 级 */ ]"
+    }
+  },
+  "quickstart": {
+    "eyebrow": "快速开始 · 两条路",
+    "h2_accent1": "一行接入",
+    "h2_mid": "，",
+    "h2_pre": "或",
+    "h2_accent2": "一个二进制",
+    "h2_suf": "自托管。",
+    "sub": "嵌入任意 web 应用，或起一个自托管 server。全开源，数据在你手里。",
+    "sdk": {
+      "label": "嵌入你的应用",
+      "s1": "或 npm / yarn",
+      "s2": "一行接入",
+      "s3": "断网照录，恢复回传"
+    },
+    "server": {
+      "label": "自托管 server",
+      "s1": "单二进制",
+      "s2": "绑公网或内网",
+      "s3": "SPA 静态托管",
+      "s4": "多租户配额"
+    },
+    "cta": "在 GitHub 上阅读源码",
+    "foot": "MIT · Rust 核心 + Vue console + Web SDK · 全开源"
+  },
+  "multiwindow": {
+    "eyebrow": "独家 · 多窗口对齐录制",
+    "h2_pre": "三扇窗口，",
+    "h2_accent": "同一面墙上时钟",
+    "h2_suf": "。",
+    "sub": "Tauri 桌面应用多窗口各自一个 rrweb 录制实例，事件带绝对 timestamp 共享时钟。回放时按 shown/hidden 区间在主时间轴同步驱动各 segment——主窗口、设置面板、模态框，三轨对齐，别家做不到。",
+    "w1": { "label": "主窗口" },
+    "w2": { "label": "设置面板" },
+    "w3": { "label": "确认模态" },
+    "play": "播放",
+    "pause": "暂停",
+    "ctrl_hint": "点击轨道跳转 · 多窗口共享播放头",
+    "foot": "传统回放：单窗口单流 · 鉴 / Prism：shown/hidden 区间同步驱动，多轨对齐"
+  },
+  "diagnosis": {
+    "eyebrow": "诊断 · 交错事件模型",
+    "h2_pre": "error / console / network，",
+    "h2_mid": "交错在 ",
+    "h2_accent": "DOM 同一条时间轴",
+    "h2_suf": "。",
+    "sub": "回放到第 3 秒，同时看到页面、那条 console.error、那个 500。传统 RUM 把它们散在「网络」「日志」「错误」三个 tab——鉴 / Prism 让它们在同一条轴上自我说明。",
+    "foot": "传统 RUM：三个 tab 来回跳，对不上时间 · 鉴 / Prism：同一条轴，自我说明",
+    "play": "播放",
+    "pause": "暂停",
+    "frame_title": "当前帧",
+    "frame_window": "窗口",
+    "frame_empty": "等待事件进入窗口…",
+    "events": {
+      "click_submit": "click <button>提交订单</button>"
+    }
+  },
+  "loop": {
+    "eyebrow": "闭环 · 一条诊断链路",
+    "h2_pre": "从",
+    "h2_accent": "录到分享",
+    "h2_mid": "，",
+    "h2_suf": "不在五个工具间来回横跳。",
+    "sub": "一条链路走完诊断全流程：录制采集 DOM + 诊断信号，回放多轨对齐，诊断看懂，标注留痕，导出单文件 bundle 分享。每一步都在同一个工具里。",
+    "s1": { "label": "录制", "desc": "DOM 级 + 诊断信号，多窗口对齐" },
+    "s2": { "label": "回放", "desc": "多轨时间轴 + 真实播放头" },
+    "s3": { "label": "诊断", "desc": "交错信号，同一条时间轴" },
+    "s4": { "label": "标注", "desc": "session 级标注，与事件流分离" },
+    "s5": { "label": "导出 / 分享", "desc": "单文件 bundle，零依赖 JSON" }
+  },
+  "deploy": {
+    "eyebrow": "部署形态 · 三选一",
+    "h2_pre": "内网、离线、合规审计——",
+    "h2_accent": "总有一款拓扑",
+    "h2_suf": "接得住。",
+    "sub": "同一份核心代码，三种部署形态：桌面 App 零云依赖，单二进制自托管，纯浏览器零安装。从个人开发者到政企内网，按需选拓扑，数据始终在你手里。",
+    "f1": {
+      "tag": "桌面 App",
+      "title": "Tauri 2 桌面应用",
+      "desc": "macOS / Windows / Linux，零云依赖。本地分析台，开箱即用，数据落 appDataDir。",
+      "meta": ["跨平台", "零云依赖"]
+    },
+    "f2": {
+      "tag": "单二进制",
+      "desc": "一个二进制同时托管 API + console 前端。--web-dir 启用 SPA，绑 0.0.0.0 即公网，多租户配额。",
+      "meta": ["单文件", "SPA 托管", "多租户"]
+    },
+    "f3": {
+      "tag": "浏览器",
+      "title": "纯浏览器访问",
+      "desc": "console 可纯浏览器跑，LoginGate 输 endpoint + key 即用。无需安装，HttpBackend 直连自托管 server。",
+      "meta": ["零安装"]
+    }
+  },
+  "footer": {
+    "tag_pre": "本地优先的前端观测平台。",
+    "tag_suf": "数据留在你手里，不上云，不锁仓。",
+    "col1": { "title": "产品", "l1": "诊断演示", "l2": "多窗口", "l3": "部署形态", "l4": "竞品对比" },
+    "col2": { "title": "资源", "l1": "快速开始", "l2": "架构透明", "l3": "本地优先宣言", "l4": "核心能力" },
+    "col3": { "title": "社区" },
+    "copyright": "© 2026 鉴 / Prism",
+    "built": "Built on rrweb 2 + Tauri 2 + Rust",
+    "vuebits": "vue-bits (MIT + Commons Clause) components used"
+  }
+}

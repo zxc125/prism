@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { Play, Pause } from "lucide-vue-next";
+import { useLang } from "../composables/useLang";
+
+const { t } = useLang();
 
 type EventType = "dom" | "network" | "console" | "error";
 interface TimelineEvent {
@@ -13,7 +16,9 @@ interface TimelineEvent {
 }
 
 // 一条真实故障故事：2.9s 点提交 -> 3.1s 500 -> 3.14s console.error -> 3.18s 未捕获异常
-const events: TimelineEvent[] = [
+// 注：events[] label 多为技术性（DOMContentLoaded / GET /api/user / TypeError...）保留原值；
+// 仅含中文的「click <button>提交订单</button>」按钮内文字进字典。
+const events = computed<TimelineEvent[]>(() => [
   { t: 0.05, type: "dom", label: "DOMContentLoaded" },
   { t: 0.4, type: "network", status: 200, label: "GET /api/user", detail: "18ms" },
   { t: 0.8, type: "dom", label: "render <Dashboard />" },
@@ -21,13 +26,13 @@ const events: TimelineEvent[] = [
   { t: 1.6, type: "network", status: 200, label: "GET /api/orders", detail: "142ms" },
   { t: 2.1, type: "dom", label: "render <OrderList />" },
   { t: 2.5, type: "console", level: "warn", label: "14 orders missing id" },
-  { t: 2.9, type: "dom", label: 'click <button>提交订单</button>' },
+  { t: 2.9, type: "dom", label: t("diagnosis.events.click_submit") },
   { t: 3.1, type: "network", status: 500, label: "POST /api/order", detail: "89ms" },
   { t: 3.14, type: "console", level: "error", label: 'TypeError: Cannot read "id" of undefined' },
   { t: 3.18, type: "error", label: "Uncaught TypeError", detail: "order.ts:42" },
   { t: 3.6, type: "dom", label: "render <ErrorToast />" },
   { t: 4.2, type: "console", level: "log", label: "error toast shown" },
-];
+]);
 
 const SESSION_MAX = 5;
 const SWEEP_MS = 14000; // 14s 扫完 0-5s，慢到故障时刻有停留
@@ -100,7 +105,7 @@ function inFrame(e: TimelineEvent): boolean {
 }
 
 const frameEvents = computed(() =>
-  events
+  events.value
     .filter((e) => Math.abs(e.t - currentT.value) <= WINDOW)
     .sort((a, b) => a.t - b.t),
 );
@@ -127,14 +132,13 @@ function togglePlay() {
   <section id="diagnosis" class="diagnosis">
     <div class="diag-inner">
       <header class="diag-head">
-        <p class="eyebrow mono">诊断 · 交错事件模型</p>
+        <p class="eyebrow mono">{{ t("diagnosis.eyebrow") }}</p>
         <h2 class="diag-h2">
-          error / console / network，<br />
-          交错在 <span class="accent-amber">DOM 同一条时间轴</span>。
+          {{ t("diagnosis.h2_pre") }}<br />
+          {{ t("diagnosis.h2_mid") }}<span class="accent-amber">{{ t("diagnosis.h2_accent") }}</span>{{ t("diagnosis.h2_suf") }}
         </h2>
         <p class="diag-sub">
-          回放到第 3 秒，同时看到页面、那条 console.error、那个 500。传统 RUM
-          把它们散在「网络」「日志」「错误」三个 tab--鉴 / Prism 让它们在同一条轴上自我说明。
+          {{ t("diagnosis.sub") }}
         </p>
       </header>
 
@@ -174,7 +178,7 @@ function togglePlay() {
             <button
               class="ctrl-play"
               @click="togglePlay"
-              :aria-label="playing ? '暂停' : '播放'"
+              :aria-label="playing ? t('diagnosis.pause') : t('diagnosis.play')"
             >
               <component :is="playing ? Pause : Play" :size="13" />
             </button>
@@ -191,13 +195,13 @@ function togglePlay() {
         <!-- 当前帧面板：同一时刻多类信号并陈 -->
         <div class="frame">
           <div class="frame-head">
-            <span class="frame-title mono">当前帧</span>
+            <span class="frame-title mono">{{ t("diagnosis.frame_title") }}</span>
             <span class="frame-tc mono">{{ formatTc(currentT) }}</span>
-            <span class="frame-window mono">±{{ WINDOW.toFixed(2) }}s 窗口</span>
+            <span class="frame-window mono">±{{ WINDOW.toFixed(2) }}s {{ t("diagnosis.frame_window") }}</span>
           </div>
           <div class="frame-body">
             <div v-if="frameEvents.length === 0" class="frame-empty mono">
-              等待事件进入窗口…
+              {{ t("diagnosis.frame_empty") }}
             </div>
             <div
               v-for="(e, i) in frameEvents"
@@ -215,7 +219,7 @@ function togglePlay() {
       </div>
 
       <p class="diag-foot mono">
-        传统 RUM：三个 tab 来回跳，对不上时间 · 鉴 / Prism：同一条轴，自我说明
+        {{ t("diagnosis.foot") }}
       </p>
     </div>
   </section>

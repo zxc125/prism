@@ -1,44 +1,48 @@
 <script setup lang="ts">
 // 架构透明 · rrweb-based / Rust 核心 / 开放 bundle（方案 §6.8 第 10 节）
 // 签名元素：分层架构栈（bottom-up）+ bundle JSON 样例（mono，色编码键）
+import { computed } from "vue";
 import { Boxes, Cpu, FileJson, MonitorPlay } from "lucide-vue-next";
 import Reveal from "./Reveal.vue";
+import { useLang } from "../composables/useLang";
 
-const layers = [
+const { t } = useLang();
+
+const layers = computed(() => [
   {
     icon: MonitorPlay,
-    name: "Console / Player UI",
-    sub: "Vue 3 · 多轨时间轴 · 诊断信号流 · Backend 抽象",
+    name: t("architecture.l1.name"),
+    sub: t("architecture.l1.sub"),
     color: "amber",
   },
   {
     icon: FileJson,
-    name: "bundle 契约 · prism-session",
-    sub: "明文 JSON · 三路共用 · 跨进程/跨机迁移唯一契约",
+    name: t("architecture.l2.name"),
+    sub: t("architecture.l2.sub"),
     color: "teal",
   },
   {
     icon: Cpu,
-    name: "Rust 核心 · observer-storage / observer-server",
-    sub: "落盘 · HTTP API · 多租户 · gzip · 服务端 redact · 限流",
+    name: t("architecture.l3.name"),
+    sub: t("architecture.l3.sub"),
     color: "amber",
   },
   {
     icon: Boxes,
-    name: "rrweb 2 · 录制基座",
-    sub: "DOM 快照 + 增量 · type:6 plugin 交错诊断信号",
+    name: t("architecture.l4.name"),
+    sub: t("architecture.l4.sub"),
     color: "teal",
   },
-];
+]);
 
-const bundleLines = [
+const bundleLines = computed(() => [
   { tok: "key", v: '"format"', s: '"prism-session"' },
   { tok: "key", v: '"version"', s: "1" },
-  { tok: "key", v: '"session"', s: '{ "id": "1721908482", "startedAt": "…" }' },
-  { tok: "key", v: '"windows"', s: '[ /* shown/hidden/focus 生命周期 */ ]' },
-  { tok: "key", v: '"segments"', s: '[ /* rrweb 事件流（含 type:6 交错） */ ]' },
-  { tok: "key", v: '"annotations"', s: '[ /* 用户标注，session 级 */ ]' },
-];
+  { tok: "key", v: '"session"', s: t("architecture.bundle.session") },
+  { tok: "key", v: '"windows"', s: t("architecture.bundle.windows") },
+  { tok: "key", v: '"segments"', s: t("architecture.bundle.segments") },
+  { tok: "key", v: '"annotations"', s: t("architecture.bundle.annotations") },
+]);
 </script>
 
 <template>
@@ -46,13 +50,13 @@ const bundleLines = [
     <div class="section-inner">
       <Reveal>
         <header class="section-head">
-          <p class="eyebrow mono">架构透明 · 没有黑盒</p>
+          <p class="eyebrow mono">{{ t("architecture.eyebrow") }}</p>
           <h2 class="section-h2">
-            建在<span class="accent-amber">rrweb</span>之上，<br />
-            核心是<span class="accent-teal">Rust</span>，契约是<span class="accent-amber">明文 JSON</span>。
+            {{ t("architecture.h2_pre") }}<span class="accent-amber">{{ t("architecture.h2_accent1") }}</span>{{ t("architecture.h2_mid") }}<br />
+            {{ t("architecture.h2_suf1") }}<span class="accent-teal">{{ t("architecture.h2_accent2") }}</span>{{ t("architecture.h2_suf2") }}<span class="accent-amber">{{ t("architecture.h2_accent3") }}</span>{{ t("architecture.h2_suf3") }}
           </h2>
           <p class="section-sub">
-            不靠魔法。录制基座是开源 rrweb 2，存储与 server 是独立 Rust crate，跨进程迁移走明文 JSON 契约。每一层都可读、可审计、可替换。
+            {{ t("architecture.sub") }}
           </p>
         </header>
       </Reveal>

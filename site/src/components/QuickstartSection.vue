@@ -1,22 +1,26 @@
 <script setup lang="ts">
 // 快速开始 · CLI 命令 + 开源链接（方案 §6.8 第 11 节）
 // 签名元素：双终端块（SDK 嵌入 / 自托管），冷青 $ 提示符 + 琥珀输出 + ash 注释
+import { computed } from "vue";
 import { ArrowUpRight, Terminal, Package } from "lucide-vue-next";
 import GithubIcon from "./GithubIcon.vue";
 import Reveal from "./Reveal.vue";
+import { useLang } from "../composables/useLang";
 
-const sdkSteps = [
-  { prompt: "$", cmd: "pnpm add @prism/observer-sdk", note: "或 npm / yarn" },
-  { prompt: ">", cmd: 'import { recordOffline } from "@prism/observer-sdk"', note: "一行接入" },
-  { prompt: ">", cmd: 'recordOffline({ endpoint: "http://localhost:8080/ingest" })', note: "断网照录，恢复回传" },
-];
+const { t } = useLang();
 
-const serverSteps = [
-  { prompt: "$", cmd: "observer-server \\", note: "单二进制" },
-  { prompt: " ", cmd: "  --bind 0.0.0.0:8080 \\", note: "绑公网或内网" },
-  { prompt: " ", cmd: "  --web-dir ./console \\", note: "SPA 静态托管" },
-  { prompt: " ", cmd: "  --tenants tenants.json", note: "多租户配额" },
-];
+const sdkSteps = computed(() => [
+  { prompt: "$", cmd: "pnpm add @prism/observer-sdk", note: t("quickstart.sdk.s1") },
+  { prompt: ">", cmd: 'import { recordOffline } from "@prism/observer-sdk"', note: t("quickstart.sdk.s2") },
+  { prompt: ">", cmd: 'recordOffline({ endpoint: "http://localhost:8080/ingest" })', note: t("quickstart.sdk.s3") },
+]);
+
+const serverSteps = computed(() => [
+  { prompt: "$", cmd: "observer-server \\", note: t("quickstart.server.s1") },
+  { prompt: " ", cmd: "  --bind 0.0.0.0:8080 \\", note: t("quickstart.server.s2") },
+  { prompt: " ", cmd: "  --web-dir ./console \\", note: t("quickstart.server.s3") },
+  { prompt: " ", cmd: "  --tenants tenants.json", note: t("quickstart.server.s4") },
+]);
 </script>
 
 <template>
@@ -24,13 +28,13 @@ const serverSteps = [
     <div class="section-inner">
       <Reveal>
         <header class="section-head center">
-          <p class="eyebrow mono">快速开始 · 两条路</p>
+          <p class="eyebrow mono">{{ t("quickstart.eyebrow") }}</p>
           <h2 class="section-h2">
-            <span class="accent-amber">一行接入</span>，<br />
-            或<span class="accent-teal">一个二进制</span>自托管。
+            <span class="accent-amber">{{ t("quickstart.h2_accent1") }}</span>{{ t("quickstart.h2_mid") }}<br />
+            {{ t("quickstart.h2_pre") }}<span class="accent-teal">{{ t("quickstart.h2_accent2") }}</span>{{ t("quickstart.h2_suf") }}
           </h2>
           <p class="section-sub">
-            嵌入任意 web 应用，或起一个自托管 server。全开源，数据在你手里。
+            {{ t("quickstart.sub") }}
           </p>
         </header>
       </Reveal>
@@ -42,7 +46,7 @@ const serverSteps = [
             <div class="term-head">
               <span class="term-label mono">
                 <Package :size="14" />
-                嵌入你的应用
+                {{ t("quickstart.sdk.label") }}
               </span>
               <span class="chip">SDK</span>
             </div>
@@ -64,7 +68,7 @@ const serverSteps = [
             <div class="term-head">
               <span class="term-label mono">
                 <Terminal :size="14" />
-                自托管 server
+                {{ t("quickstart.server.label") }}
               </span>
               <span class="chip">SELF-HOST</span>
             </div>
@@ -92,11 +96,11 @@ const serverSteps = [
             target="_blank"
           >
             <GithubIcon :size="18" />
-            在 GitHub 上阅读源码
+            {{ t("quickstart.cta") }}
             <ArrowUpRight :size="16" />
           </a>
           <p class="qs-foot mono">
-            MIT · Rust 核心 + Vue console + Web SDK · 全开源
+            {{ t("quickstart.foot") }}
           </p>
         </div>
       </Reveal>

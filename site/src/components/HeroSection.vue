@@ -2,6 +2,9 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import PrismLogo from "./PrismLogo.vue";
 import Aurora from "./Aurora.vue";
+import { useLang } from "../composables/useLang";
+
+const { t } = useLang();
 
 // DOM 轨事件（rrweb snapshot/incremental）
 const domEvents = [
@@ -77,13 +80,13 @@ function formatTc(s: number): string {
     <header class="topbar">
       <div class="wordmark">
         <PrismLogo :height="28" />
-        <span class="wordmark-text">鉴 / Prism</span>
+        <span class="wordmark-text">{{ t("nav.wordmark") }}</span>
       </div>
       <nav class="topnav">
-        <a class="navlink" href="#diagnosis">诊断</a>
-        <a class="navlink" href="#deploy">部署</a>
-        <a class="navlink" href="https://github.com/zxc125/prism" rel="noreferrer">GitHub</a>
-        <a class="btn btn-primary" href="#quickstart">自托管 →</a>
+        <a class="navlink" href="#diagnosis">{{ t("hero.topnav.diagnosis") }}</a>
+        <a class="navlink" href="#deploy">{{ t("hero.topnav.deploy") }}</a>
+        <a class="navlink" href="https://github.com/zxc125/prism" rel="noreferrer">{{ t("hero.topnav.github") }}</a>
+        <a class="btn btn-primary" href="#quickstart">{{ t("hero.topnav.cta") }}</a>
       </nav>
     </header>
 
@@ -91,23 +94,20 @@ function formatTc(s: number): string {
     <div class="hero-body">
       <!-- 左：文案 -->
       <div class="hero-copy">
-        <p class="eyebrow">本地优先 · 不上云 · 不锁仓</p>
+        <p class="eyebrow">{{ t("hero.eyebrow") }}</p>
         <h1 class="hero-h1">
-          你的会话，<br />
-          不必<span class="accent-amber">离开你的机器</span>。
+          {{ t("hero.h1_pre") }}<br />
+          {{ t("hero.h1_mid") }}<span class="accent-amber">{{ t("hero.h1_accent") }}</span>{{ t("hero.h1_suf") }}
         </h1>
         <p class="hero-sub">
-          鉴 / Prism
-          是本地优先的前端观测平台。会话回放、诊断信号、多窗口对齐--error /
-          console / network 交错进同一条时间轴，回放到第 3
-          秒，同时看到页面、那条 console.error、那个 500。
+          {{ t("hero.sub") }}
         </p>
         <div class="hero-cta">
-          <a class="btn btn-primary lg" href="#quickstart">自托管 →</a>
-          <a class="btn btn-ghost lg" href="#diagnosis">看诊断演示</a>
+          <a class="btn btn-primary lg" href="#quickstart">{{ t("hero.ctaPrimary") }}</a>
+          <a class="btn btn-ghost lg" href="#diagnosis">{{ t("hero.ctaSecondary") }}</a>
         </div>
         <p class="hero-foot mono">
-          <span class="rec-dot" /> REC · observer-sdk 一行接入 · 单二进制自托管
+          <span class="rec-dot" /> {{ t("hero.foot") }}
         </p>
       </div>
 

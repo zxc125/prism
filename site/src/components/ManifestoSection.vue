@@ -1,40 +1,28 @@
 <script setup lang="ts">
 // 本地优先宣言 · 数据主权（方案 §6.8 第 3 节）
 // 签名元素：棱镜分光 beam 分隔线（白光 -> 棱镜 -> 琥珀/冷青双光谱）+ 编号信条网格
+import { computed } from "vue";
 import Reveal from "./Reveal.vue";
+import { useLang } from "../composables/useLang";
 
-const beliefs = [
-  {
-    k: "01",
-    t: "数据属于你",
-    d: "会话文件就是一份 JSON，存在你自己的磁盘。不经过任何第三方服务器，不开端口给云。",
-  },
-  {
-    k: "02",
-    t: "本地是默认，不是可选",
-    d: "零云依赖即可运行。自托管私有云是 opt-in 拓扑，不是唯一路径。你不 own 数据就不算工具。",
-  },
-  {
-    k: "03",
-    t: "诊断优先于监控",
-    d: "不做告警、不做 RUM 指标、不做漏斗热图。专注「复现 -> 看懂 -> 标注 -> 分享」这一条诊断闭环。",
-  },
-  {
-    k: "04",
-    t: "开放契约优先于封闭",
-    d: "prism-session 是明文 JSON 规范，本地文件 / 本地 server / 云端上传三路共用。随时带走，随时删干净。",
-  },
-];
+const { t } = useLang();
+
+const beliefs = computed(() => [
+  { k: "01", t: t("manifesto.b1.t"), d: t("manifesto.b1.d") },
+  { k: "02", t: t("manifesto.b2.t"), d: t("manifesto.b2.d") },
+  { k: "03", t: t("manifesto.b3.t"), d: t("manifesto.b3.d") },
+  { k: "04", t: t("manifesto.b4.t"), d: t("manifesto.b4.d") },
+]);
 </script>
 
 <template>
   <section id="manifesto" class="section manifesto">
     <div class="section-inner">
       <Reveal>
-        <p class="eyebrow mono">本地优先宣言 · 我们相信什么</p>
+        <p class="eyebrow mono">{{ t("manifesto.eyebrow") }}</p>
         <h2 class="mani-h2">
-          数据留在你手里，<br />
-          是<span class="accent-amber">默认</span>，不是<span class="strike">溢价套餐</span>。
+          {{ t("manifesto.h2_pre") }}<br />
+          {{ t("manifesto.h2_mid") }}<span class="accent-amber">{{ t("manifesto.h2_accent1") }}</span>{{ t("manifesto.h2_between") }}<span class="strike">{{ t("manifesto.h2_accent2") }}</span>{{ t("manifesto.h2_suf") }}
         </h2>
         <!-- 棱镜分光 beam：白光 -> 棱镜 -> 琥珀/冷青双光谱 -->
         <div class="prism-beam" aria-hidden="true">

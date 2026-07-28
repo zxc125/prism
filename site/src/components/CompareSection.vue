@@ -1,120 +1,131 @@
 <script setup lang="ts">
 // 竞品对比 · 对标矩阵（方案 §6.8 第 9 节 · §5.1）
 // 签名元素：对标表，我方列琥珀高亮 + ✓/✗ 色编码
+import { computed } from "vue";
 import { Check, X } from "lucide-vue-next";
 import Reveal from "./Reveal.vue";
+import { useLang } from "../composables/useLang";
 
-const products = [
-  "鉴 / Prism",
+const { t } = useLang();
+
+const products = computed(() => [
+  t("compare.products.p1"),
   "FullStory / LogRocket",
   "Sentry Replay",
   "Highlight.io",
   "PostHog",
   "rrweb",
-];
+]);
 
 type Cell = { text: string; kind: "yes" | "no" | "text"; ours?: boolean };
-const rows: { dim: string; cells: Cell[] }[] = [
-  {
-    dim: "默认形态",
-    cells: [
-      { text: "本地 / 自托管", kind: "text", ours: true },
-      { text: "云 SaaS", kind: "text" },
-      { text: "云", kind: "text" },
-      { text: "云优先", kind: "text" },
-      { text: "云", kind: "text" },
-      { text: "库", kind: "text" },
-    ],
-  },
-  {
-    dim: "数据主权",
-    cells: [
-      { text: "完全自有", kind: "yes", ours: true },
-      { text: "厂商托管", kind: "no" },
-      { text: "厂商托管", kind: "no" },
-      { text: "厂商托管", kind: "no" },
-      { text: "厂商托管", kind: "no" },
-      { text: "自有", kind: "yes" },
-    ],
-  },
-  {
-    dim: "计费",
-    cells: [
-      { text: "无 / 自托管成本", kind: "yes", ours: true },
-      { text: "per-session", kind: "no" },
-      { text: "套餐内", kind: "no" },
-      { text: "per-session", kind: "no" },
-      { text: "per-session", kind: "no" },
-      { text: "免费", kind: "yes" },
-    ],
-  },
-  {
-    dim: "多窗口对齐",
-    cells: [
-      { text: "独家", kind: "yes", ours: true },
-      { text: "", kind: "no" },
-      { text: "", kind: "no" },
-      { text: "", kind: "no" },
-      { text: "", kind: "no" },
-      { text: "", kind: "no" },
-    ],
-  },
-  {
-    dim: "诊断信号交错",
-    cells: [
-      { text: "同一时间轴", kind: "yes", ours: true },
-      { text: "独立面板", kind: "no" },
-      { text: "偏 error", kind: "no" },
-      { text: "独立面板", kind: "no" },
-      { text: "独立面板", kind: "no" },
-      { text: "需自建", kind: "no" },
-    ],
-  },
-  {
-    dim: "定位",
-    cells: [
-      { text: "诊断工具", kind: "text", ours: true },
-      { text: "RUM / 分析", kind: "text" },
-      { text: "错误追踪", kind: "text" },
-      { text: "RUM", kind: "text" },
-      { text: "产品分析", kind: "text" },
-      { text: "录回放库", kind: "text" },
-    ],
-  },
-  {
-    dim: "告警 / RUM",
-    cells: [
-      { text: "不做", kind: "text", ours: true },
-      { text: "做", kind: "text" },
-      { text: "做", kind: "text" },
-      { text: "做", kind: "text" },
-      { text: "做", kind: "text" },
-      { text: "", kind: "no" },
-    ],
-  },
-  {
-    dim: "桌面 App",
-    cells: [
-      { text: "有", kind: "yes", ours: true },
-      { text: "", kind: "no" },
-      { text: "", kind: "no" },
-      { text: "", kind: "no" },
-      { text: "", kind: "no" },
-      { text: "", kind: "no" },
-    ],
-  },
-  {
-    dim: "开放数据契约",
-    cells: [
-      { text: "有", kind: "yes", ours: true },
-      { text: "", kind: "no" },
-      { text: "", kind: "no" },
-      { text: "部分", kind: "text" },
-      { text: "", kind: "no" },
-      { text: "N/A", kind: "text" },
-    ],
-  },
-];
+const rows = computed(() => {
+  const c = (key: string, kind: Cell["kind"], ours?: boolean): Cell => ({
+    text: t(key),
+    kind,
+    ours,
+  });
+  return [
+    {
+      dim: t("compare.rows.form.cells.0"),
+      cells: [
+        c("compare.rows.form.cells.1", "text", true),
+        c("compare.rows.form.cells.2", "text"),
+        c("compare.rows.form.cells.3", "text"),
+        c("compare.rows.form.cells.4", "text"),
+        c("compare.rows.form.cells.5", "text"),
+        c("compare.rows.form.cells.6", "text"),
+      ],
+    },
+    {
+      dim: t("compare.rows.sovereignty.cells.0"),
+      cells: [
+        c("compare.rows.sovereignty.cells.1", "yes", true),
+        c("compare.rows.sovereignty.cells.2", "no"),
+        c("compare.rows.sovereignty.cells.3", "no"),
+        c("compare.rows.sovereignty.cells.4", "no"),
+        c("compare.rows.sovereignty.cells.5", "no"),
+        c("compare.rows.sovereignty.cells.6", "yes"),
+      ],
+    },
+    {
+      dim: t("compare.rows.pricing.cells.0"),
+      cells: [
+        c("compare.rows.pricing.cells.1", "yes", true),
+        c("compare.rows.pricing.cells.2", "no"),
+        c("compare.rows.pricing.cells.3", "no"),
+        c("compare.rows.pricing.cells.4", "no"),
+        c("compare.rows.pricing.cells.5", "no"),
+        c("compare.rows.pricing.cells.6", "yes"),
+      ],
+    },
+    {
+      dim: t("compare.rows.multiwindow.cells.0"),
+      cells: [
+        c("compare.rows.multiwindow.cells.1", "yes", true),
+        c("compare.rows.multiwindow.cells.2", "no"),
+        c("compare.rows.multiwindow.cells.3", "no"),
+        c("compare.rows.multiwindow.cells.4", "no"),
+        c("compare.rows.multiwindow.cells.5", "no"),
+        c("compare.rows.multiwindow.cells.6", "no"),
+      ],
+    },
+    {
+      dim: t("compare.rows.diagnosis.cells.0"),
+      cells: [
+        c("compare.rows.diagnosis.cells.1", "yes", true),
+        c("compare.rows.diagnosis.cells.2", "no"),
+        c("compare.rows.diagnosis.cells.3", "no"),
+        c("compare.rows.diagnosis.cells.4", "no"),
+        c("compare.rows.diagnosis.cells.5", "no"),
+        c("compare.rows.diagnosis.cells.6", "no"),
+      ],
+    },
+    {
+      dim: t("compare.rows.positioning.cells.0"),
+      cells: [
+        c("compare.rows.positioning.cells.1", "text", true),
+        c("compare.rows.positioning.cells.2", "text"),
+        c("compare.rows.positioning.cells.3", "text"),
+        c("compare.rows.positioning.cells.4", "text"),
+        c("compare.rows.positioning.cells.5", "text"),
+        c("compare.rows.positioning.cells.6", "text"),
+      ],
+    },
+    {
+      dim: t("compare.rows.alerts.cells.0"),
+      cells: [
+        c("compare.rows.alerts.cells.1", "text", true),
+        c("compare.rows.alerts.cells.2", "text"),
+        c("compare.rows.alerts.cells.3", "text"),
+        c("compare.rows.alerts.cells.4", "text"),
+        c("compare.rows.alerts.cells.5", "text"),
+        c("compare.rows.alerts.cells.6", "no"),
+      ],
+    },
+    {
+      dim: t("compare.rows.desktop.cells.0"),
+      cells: [
+        c("compare.rows.desktop.cells.1", "yes", true),
+        c("compare.rows.desktop.cells.2", "no"),
+        c("compare.rows.desktop.cells.3", "no"),
+        c("compare.rows.desktop.cells.4", "no"),
+        c("compare.rows.desktop.cells.5", "no"),
+        c("compare.rows.desktop.cells.6", "no"),
+      ],
+    },
+    {
+      dim: t("compare.rows.contract.cells.0"),
+      cells: [
+        c("compare.rows.contract.cells.1", "yes", true),
+        c("compare.rows.contract.cells.2", "no"),
+        c("compare.rows.contract.cells.3", "no"),
+        c("compare.rows.contract.cells.4", "text"),
+        c("compare.rows.contract.cells.5", "no"),
+        c("compare.rows.contract.cells.6", "text"),
+      ],
+    },
+  ] as { dim: string; cells: Cell[] }[];
+});
 </script>
 
 <template>
@@ -122,13 +133,13 @@ const rows: { dim: string; cells: Cell[] }[] = [
     <div class="section-inner">
       <Reveal>
         <header class="section-head">
-          <p class="eyebrow mono">竞品对比 · 对标矩阵</p>
+          <p class="eyebrow mono">{{ t("compare.eyebrow") }}</p>
           <h2 class="section-h2">
-            同行做 RUM，<br />
-            我们做<span class="accent-amber">诊断闭环</span>。
+            {{ t("compare.h2_pre") }}<br />
+            {{ t("compare.h2_mid") }}<span class="accent-amber">{{ t("compare.h2_accent") }}</span>{{ t("compare.h2_suf") }}
           </h2>
           <p class="section-sub">
-            不是功能多寡的对比，是定位的分野。云 RUM 把数据搬走按 session 收费；鉴 / Prism 把数据留下，只做诊断这一件事。
+            {{ t("compare.sub") }}
           </p>
         </header>
       </Reveal>
@@ -138,7 +149,7 @@ const rows: { dim: string; cells: Cell[] }[] = [
           <table class="cmp-table">
             <thead>
               <tr>
-                <th class="dim-col">维度</th>
+                <th class="dim-col">{{ t("compare.dimCol") }}</th>
                 <th
                   v-for="(p, i) in products"
                   :key="p"

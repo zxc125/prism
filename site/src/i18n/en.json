@@ -1,0 +1,236 @@
+{
+  "meta": {
+    "title": "Prism — Local-first frontend observability",
+    "description": "A local-first frontend observability platform. Session replay, diagnostic signals, multi-window alignment — your data stays on your machine. No cloud, no lock-in."
+  },
+  "nav": {
+    "wordmark": "Prism",
+    "diagnosis": "Diagnosis",
+    "multiwindow": "Multi-window",
+    "deploy": "Deploy",
+    "compare": "Compare",
+    "quickstart": "Start",
+    "cta": "Self-host →",
+    "ctaLabel": "Self-host",
+    "github": "GitHub"
+  },
+  "hero": {
+    "eyebrow": "Local-first · No cloud · No lock-in",
+    "h1_pre": "Your sessions,",
+    "h1_br": true,
+    "h1_mid": "never have to",
+    "h1_accent": "leave your machine",
+    "h1_suf": ".",
+    "sub": "Prism is a local-first frontend observability platform. Session replay, diagnostic signals, multi-window alignment — error / console / network interleaved into one timeline. Scrub to second 3 and see the page, that console.error, and that 500 — together.",
+    "ctaPrimary": "Self-host →",
+    "ctaSecondary": "See the diagnosis demo",
+    "foot": "REC · observer-sdk one-line integration · single-binary self-host",
+    "topnav": {
+      "diagnosis": "Diagnosis",
+      "deploy": "Deploy",
+      "github": "GitHub",
+      "cta": "Self-host →"
+    }
+  },
+  "pain": {
+    "eyebrow": "The pain · The three costs of cloud RUM",
+    "h2_pre": "Ship sessions to the cloud,",
+    "h2_mid": "and what you pay isn't money — it's ",
+    "h2_accent": "control",
+    "h2_suf": ".",
+    "sub": "Mainstream session-replay tools upload user data to a third-party cloud by default, bill per session, and use proprietary formats. Privacy, cost, lock-in — three costs, and you pay all three.",
+    "c1": { "tag": "Privacy cost", "title": "User sessions uploaded to a third-party cloud", "desc": "Every click, input, and network request is sent to someone else's server. Finance, healthcare, government — unacceptable by default." },
+    "c2": { "tag": "Cost", "title": "Billed per session — the more you use, the more you pay", "desc": "per-session / per-seat pricing. When traffic spikes, the bill explodes instead of scaling. Exporting your own data means talking to sales." },
+    "c3": { "tag": "Lock-in cost", "title": "Your data isn't in your hands", "desc": "Sessions are vendor-hosted in proprietary export formats — migration cost is huge. When prices rise, service stops, or terms change, you have no fallback." }
+  },
+  "manifesto": {
+    "eyebrow": "Local-first manifesto · What we believe",
+    "h2_pre": "Your data stays in your hands —",
+    "h2_mid": "by ",
+    "h2_accent1": "default",
+    "h2_between": ", not as a ",
+    "h2_accent2": "premium plan",
+    "h2_suf": ".",
+    "b1": { "t": "Your data belongs to you", "d": "A session is just a JSON file on your own disk. It never touches a third-party server; no port is opened to the cloud." },
+    "b2": { "t": "Local is the default, not an option", "d": "Runs with zero cloud dependency. Self-hosted private cloud is an opt-in topology, not the only path. A tool you don't own your data in isn't a tool." },
+    "b3": { "t": "Diagnosis over monitoring", "d": "No alerts, no RUM metrics, no funnels or heatmaps. We focus on one diagnostic loop: reproduce → understand → annotate → share." },
+    "b4": { "t": "Open contracts over closed ones", "d": "prism-session is a plaintext JSON spec, shared across local files / local server / cloud upload. Take it with you anytime; delete it clean anytime." }
+  },
+  "capabilities": {
+    "eyebrow": "Core capabilities · Six takeaways",
+    "h2_pre": "Every one of them ",
+    "h2_accent": "holds up",
+    "h2_mid": " —",
+    "h2_suf": "not side-features padding the list.",
+    "sub": "From capture to deploy, six capabilities you can explain in one sentence — each maps to a real mechanism in the product, not marketing copy.",
+    "c1": { "title": "Local-first, data never leaves", "desc": "Zero cloud dependency by default. User data never touches a third-party server — privacy-compliant by construction, no vendor lock-in." },
+    "c2": { "title": "Multi-window aligned recording — exclusive", "desc": "Tauri multi-window shares a wall clock; replay syncs multiple tracks. The core argument for desktop-app debugging — no one else does this." },
+    "c3": { "title": "Interleaved event model", "desc": "error / console / network interleave into the DOM event stream as type:6, sharing one timeline — no cross-stream alignment needed." },
+    "c4": { "title": "Diagnosis-oriented, not monitoring", "desc": "No alerts, no RUM metrics. Focus on the reproduce → understand → annotate → share diagnostic loop." },
+    "c5": { "title": "Single-binary self-host", "desc": "observer-server — one file hosts API + frontend together. Air-gapped networks, offline, compliance audits all work." },
+    "c6": { "title": "Open bundle contract", "desc": "prism-session — a plaintext JSON spec shared across local / server / cloud paths. Take it with you anytime." }
+  },
+  "compare": {
+    "eyebrow": "Competitive comparison · matrix",
+    "h2_pre": "Others build RUM;",
+    "h2_mid": "we build the ",
+    "h2_accent": "diagnostic loop",
+    "h2_suf": ".",
+    "sub": "It's not a feature-count comparison — it's a difference in positioning. Cloud RUM ships your data out and bills per session; Prism keeps your data and does one thing: diagnosis.",
+    "dimCol": "Dimension",
+    "products": { "p1": "Prism" },
+    "rows": {
+      "form": {
+        "cells": { "0": "Default form", "1": "Local / self-hosted", "2": "Cloud SaaS", "3": "Cloud", "4": "Cloud-first", "5": "Cloud", "6": "Library" }
+      },
+      "sovereignty": {
+        "cells": { "0": "Data sovereignty", "1": "Fully yours", "2": "Vendor-hosted", "3": "Vendor-hosted", "4": "Vendor-hosted", "5": "Vendor-hosted", "6": "Self-owned" }
+      },
+      "pricing": {
+        "cells": { "0": "Pricing", "1": "None / self-host cost", "2": "per-session", "3": "In plan", "4": "per-session", "5": "per-session", "6": "Free" }
+      },
+      "multiwindow": {
+        "cells": { "0": "Multi-window alignment", "1": "Exclusive", "2": "", "3": "", "4": "", "5": "", "6": "" }
+      },
+      "diagnosis": {
+        "cells": { "0": "Interleaved diagnostic signals", "1": "Same timeline", "2": "Separate panel", "3": "Error-leaning", "4": "Separate panel", "5": "Separate panel", "6": "DIY" }
+      },
+      "positioning": {
+        "cells": { "0": "Positioning", "1": "Diagnostic tool", "2": "RUM / analytics", "3": "Error tracking", "4": "RUM", "5": "Product analytics", "6": "Replay library" }
+      },
+      "alerts": {
+        "cells": { "0": "Alerts / RUM", "1": "No", "2": "Yes", "3": "Yes", "4": "Yes", "5": "Yes", "6": "" }
+      },
+      "desktop": {
+        "cells": { "0": "Desktop app", "1": "Yes", "2": "", "3": "", "4": "", "5": "", "6": "" }
+      },
+      "contract": {
+        "cells": { "0": "Open data contract", "1": "Yes", "2": "", "3": "", "4": "Partial", "5": "", "6": "N/A" }
+      }
+    }
+  },
+  "architecture": {
+    "eyebrow": "Transparent architecture · no black boxes",
+    "h2_pre": "Built on ",
+    "h2_accent1": "rrweb",
+    "h2_mid": ",",
+    "h2_suf1": "the core is ",
+    "h2_accent2": "Rust",
+    "h2_suf2": ", and the contract is ",
+    "h2_accent3": "plaintext JSON",
+    "h2_suf3": ".",
+    "sub": "No magic. The recording base is open-source rrweb 2; storage and server are independent Rust crates; cross-process migration follows a plaintext JSON contract. Every layer is readable, auditable, and replaceable.",
+    "l1": { "name": "Console / Player UI", "sub": "Vue 3 · multi-track timeline · diagnostic signal flow · Backend abstraction" },
+    "l2": { "name": "bundle contract · prism-session", "sub": "Plaintext JSON · shared across three paths · the only contract for cross-process/machine migration" },
+    "l3": { "name": "Rust core · observer-storage / observer-server", "sub": "Persistence · HTTP API · multi-tenant · gzip · server-side redact · rate limiting" },
+    "l4": { "name": "rrweb 2 · recording base", "sub": "DOM snapshot + incremental · type:6 plugin interleaves diagnostic signals" },
+    "bundle": {
+      "session": "{ \"id\": \"1721908482\", \"startedAt\": \"…\" }",
+      "windows": "[ /* shown/hidden/focus lifecycle */ ]",
+      "segments": "[ /* rrweb event stream (with type:6 interleaving) */ ]",
+      "annotations": "[ /* user annotations, session-level */ ]"
+    }
+  },
+  "quickstart": {
+    "eyebrow": "Quick start · two paths",
+    "h2_accent1": "One line to integrate",
+    "h2_mid": ",",
+    "h2_pre": "or ",
+    "h2_accent2": "one binary",
+    "h2_suf": " to self-host.",
+    "sub": "Embed it in any web app, or run a self-hosted server. Fully open source, data in your hands.",
+    "sdk": {
+      "label": "Embed in your app",
+      "s1": "or npm / yarn",
+      "s2": "one-line integration",
+      "s3": "records offline, replays when back online"
+    },
+    "server": {
+      "label": "Self-hosted server",
+      "s1": "single binary",
+      "s2": "bind public or intranet",
+      "s3": "SPA static hosting",
+      "s4": "multi-tenant quotas"
+    },
+    "cta": "Read the source on GitHub",
+    "foot": "MIT · Rust core + Vue console + Web SDK · fully open source"
+  },
+  "multiwindow": {
+    "eyebrow": "Exclusive · Multi-window aligned recording",
+    "h2_pre": "Three windows,",
+    "h2_accent": "one wall clock",
+    "h2_suf": ".",
+    "sub": "Each Tauri desktop window runs its own rrweb recorder, with events carrying absolute timestamps on a shared clock. On replay, shown/hidden intervals drive each segment in sync along the main timeline — main window, settings panel, modal. Three tracks aligned. No one else does this.",
+    "w1": { "label": "Main window" },
+    "w2": { "label": "Settings panel" },
+    "w3": { "label": "Confirm modal" },
+    "play": "Play",
+    "pause": "Pause",
+    "ctrl_hint": "Click a track to scrub · multi-window shared playhead",
+    "foot": "Traditional replay: single window, single stream · Prism: shown/hidden intervals drive sync, multi-track aligned"
+  },
+  "diagnosis": {
+    "eyebrow": "Diagnosis · Interleaved event model",
+    "h2_pre": "error / console / network,",
+    "h2_mid": "interleaved on ",
+    "h2_accent": "the DOM's single timeline",
+    "h2_suf": ".",
+    "sub": "Scrub to second 3 and see the page, that console.error, and that 500 — together. Traditional RUM scatters them across Network / Logs / Errors tabs; Prism lets them explain themselves on one axis.",
+    "foot": "Traditional RUM: jump across three tabs, times don't line up · Prism: one axis, self-explanatory",
+    "play": "Play",
+    "pause": "Pause",
+    "frame_title": "Current frame",
+    "frame_window": "window",
+    "frame_empty": "Waiting for events to enter the window…",
+    "events": {
+      "click_submit": "click <button>Submit order</button>"
+    }
+  },
+  "loop": {
+    "eyebrow": "The loop · One diagnostic chain",
+    "h2_pre": "From",
+    "h2_accent": "record to share",
+    "h2_mid": ",",
+    "h2_suf": "without bouncing across five tools.",
+    "sub": "One chain runs the whole diagnostic flow: recording captures DOM + diagnostic signals, replay aligns multiple tracks, diagnosis makes sense of it, annotations leave marks, and export ships a single-file bundle to share. Every step in one tool.",
+    "s1": { "label": "Record", "desc": "DOM-level + diagnostic signals, multi-window aligned" },
+    "s2": { "label": "Replay", "desc": "Multi-track timeline + real playhead" },
+    "s3": { "label": "Diagnose", "desc": "Interleaved signals, one timeline" },
+    "s4": { "label": "Annotate", "desc": "Session-level annotations, separate from the event stream" },
+    "s5": { "label": "Export / Share", "desc": "Single-file bundle, zero-dependency JSON" }
+  },
+  "deploy": {
+    "eyebrow": "Deployment · pick one of three",
+    "h2_pre": "Intranet, offline, compliance audits —",
+    "h2_accent": "there's a topology",
+    "h2_suf": "that fits.",
+    "sub": "One core codebase, three deployment forms: a desktop app with zero cloud dependency, a single-binary self-host, or pure-browser with zero install. From solo developers to enterprise intranets, pick the topology you need — your data stays in your hands.",
+    "f1": {
+      "tag": "Desktop app",
+      "title": "Tauri 2 desktop app",
+      "desc": "macOS / Windows / Linux, zero cloud dependency. A local analysis console, ready out of the box, data written to appDataDir.",
+      "meta": ["Cross-platform", "Zero cloud"]
+    },
+    "f2": {
+      "tag": "Single binary",
+      "desc": "One binary hosts both the API and the console frontend. --web-dir enables the SPA, bind 0.0.0.0 to expose it publicly, with multi-tenant quotas.",
+      "meta": ["Single file", "SPA hosting", "Multi-tenant"]
+    },
+    "f3": {
+      "tag": "Browser",
+      "title": "Pure-browser access",
+      "desc": "The console runs entirely in the browser — enter your endpoint + key at LoginGate and go. No install; HttpBackend talks directly to your self-hosted server.",
+      "meta": ["Zero install"]
+    }
+  },
+  "footer": {
+    "tag_pre": "A local-first frontend observability platform.",
+    "tag_suf": "Your data stays in your hands — no cloud, no lock-in.",
+    "col1": { "title": "Product", "l1": "Diagnosis demo", "l2": "Multi-window", "l3": "Deployment", "l4": "Comparison" },
+    "col2": { "title": "Resources", "l1": "Quick start", "l2": "Architecture", "l3": "Local-first manifesto", "l4": "Core capabilities" },
+    "col3": { "title": "Community" },
+    "copyright": "© 2026 Prism",
+    "built": "Built on rrweb 2 + Tauri 2 + Rust",
+    "vuebits": "vue-bits (MIT + Commons Clause) components used"
+  }
+}

@@ -2,9 +2,12 @@
 // 独家：多窗口对齐（方案 §6.8 第 5 节）
 // 签名元素：多轨窗口生命周期时间轴 - 3 个窗口 lane（shown/hidden 段）+ 信号轨 + 共享播放头
 // 对齐产品真实机制：shown/hidden 区间在主时间轴同步驱动各 segment
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { Play, Pause } from "lucide-vue-next";
 import Reveal from "./Reveal.vue";
+import { useLang } from "../composables/useLang";
+
+const { t } = useLang();
 
 interface WinSeg {
   label: string;
@@ -12,11 +15,11 @@ interface WinSeg {
   end: number;
   color: "amber" | "teal" | "oxblood";
 }
-const windows: WinSeg[] = [
-  { label: "主窗口", start: 0, end: 5, color: "amber" },
-  { label: "设置面板", start: 1.2, end: 3.8, color: "teal" },
-  { label: "确认模态", start: 2.5, end: 4.2, color: "oxblood" },
-];
+const windows = computed<WinSeg[]>(() => [
+  { label: t("multiwindow.w1.label"), start: 0, end: 5, color: "amber" },
+  { label: t("multiwindow.w2.label"), start: 1.2, end: 3.8, color: "teal" },
+  { label: t("multiwindow.w3.label"), start: 2.5, end: 4.2, color: "oxblood" },
+]);
 
 interface Sig {
   t: number;
@@ -94,13 +97,13 @@ function togglePlay() {
     <div class="section-inner">
       <Reveal>
         <header class="section-head">
-          <p class="eyebrow mono">独家 · 多窗口对齐录制</p>
+          <p class="eyebrow mono">{{ t("multiwindow.eyebrow") }}</p>
           <h2 class="section-h2">
-            三扇窗口，<br />
-            <span class="accent-amber">同一面墙上时钟</span>。
+            {{ t("multiwindow.h2_pre") }}<br />
+            <span class="accent-amber">{{ t("multiwindow.h2_accent") }}</span>{{ t("multiwindow.h2_suf") }}
           </h2>
           <p class="section-sub">
-            Tauri 桌面应用多窗口各自一个 rrweb 录制实例，事件带绝对 timestamp 共享时钟。回放时按 shown/hidden 区间在主时间轴同步驱动各 segment--主窗口、设置面板、模态框，三轨对齐，别家做不到。
+            {{ t("multiwindow.sub") }}
           </p>
         </header>
       </Reveal>
@@ -163,16 +166,16 @@ function togglePlay() {
             <button
               class="ctrl-play"
               @click="togglePlay"
-              :aria-label="playing ? '暂停' : '播放'"
+              :aria-label="playing ? t('multiwindow.pause') : t('multiwindow.play')"
             >
               <component :is="playing ? Pause : Play" :size="13" />
             </button>
             <span class="ctrl-tc mono">{{ fmt(currentT) }}</span>
-            <span class="ctrl-hint mono">点击轨道跳转 · 多窗口共享播放头</span>
+            <span class="ctrl-hint mono">{{ t("multiwindow.ctrl_hint") }}</span>
           </div>
 
           <p class="stage-foot mono">
-            传统回放：单窗口单流 · 鉴 / Prism：shown/hidden 区间同步驱动，多轨对齐
+            {{ t("multiwindow.foot") }}
           </p>
         </div>
       </Reveal>

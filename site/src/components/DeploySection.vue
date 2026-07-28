@@ -1,38 +1,42 @@
 <script setup lang="ts">
 // 部署形态 · 桌面 App / 单二进制 / 浏览器（方案 §6.8 第 8 节）
 // 签名元素：三形态并置卡片，各带迷你拓扑 + 来源色点 + mono meta
+import { computed } from "vue";
 import { Monitor, Terminal, Globe } from "lucide-vue-next";
 import Reveal from "./Reveal.vue";
+import { useLang } from "../composables/useLang";
 
-const forms = [
+const { t } = useLang();
+
+const forms = computed(() => [
   {
     icon: Monitor,
     accent: "amber",
     dot: "amber",
-    tag: "桌面 App",
-    title: "Tauri 2 桌面应用",
-    desc: "macOS / Windows / Linux，零云依赖。本地分析台，开箱即用，数据落 appDataDir。",
-    meta: ["Tauri 2", "跨平台", "零云依赖"],
+    tag: t("deploy.f1.tag"),
+    title: t("deploy.f1.title"),
+    desc: t("deploy.f1.desc"),
+    meta: ["Tauri 2", t("deploy.f1.meta.0"), t("deploy.f1.meta.1")],
   },
   {
     icon: Terminal,
     accent: "teal",
     dot: "teal",
-    tag: "单二进制",
+    tag: t("deploy.f2.tag"),
     title: "observer-server",
-    desc: "一个二进制同时托管 API + console 前端。--web-dir 启用 SPA，绑 0.0.0.0 即公网，多租户配额。",
-    meta: ["单文件", "SPA 托管", "多租户"],
+    desc: t("deploy.f2.desc"),
+    meta: [t("deploy.f2.meta.0"), t("deploy.f2.meta.1"), t("deploy.f2.meta.2")],
   },
   {
     icon: Globe,
     accent: "amber",
     dot: "amber",
-    tag: "浏览器",
-    title: "纯浏览器访问",
-    desc: "console 可纯浏览器跑，LoginGate 输 endpoint + key 即用。无需安装，HttpBackend 直连自托管 server。",
-    meta: ["零安装", "HttpBackend", "LoginGate"],
+    tag: t("deploy.f3.tag"),
+    title: t("deploy.f3.title"),
+    desc: t("deploy.f3.desc"),
+    meta: [t("deploy.f3.meta.0"), "HttpBackend", "LoginGate"],
   },
-];
+]);
 </script>
 
 <template>
@@ -40,13 +44,13 @@ const forms = [
     <div class="section-inner">
       <Reveal>
         <header class="section-head">
-          <p class="eyebrow mono">部署形态 · 三选一</p>
+          <p class="eyebrow mono">{{ t("deploy.eyebrow") }}</p>
           <h2 class="section-h2">
-            内网、离线、合规审计--<br />
-            <span class="accent-teal">总有一款拓扑</span>接得住。
+            {{ t("deploy.h2_pre") }}<br />
+            <span class="accent-teal">{{ t("deploy.h2_accent") }}</span>{{ t("deploy.h2_suf") }}
           </h2>
           <p class="section-sub">
-            同一份核心代码，三种部署形态：桌面 App 零云依赖，单二进制自托管，纯浏览器零安装。从个人开发者到政企内网，按需选拓扑，数据始终在你手里。
+            {{ t("deploy.sub") }}
           </p>
         </header>
       </Reveal>

@@ -1,16 +1,20 @@
 <script setup lang="ts">
 // 闭环 · 录 -> 回放 -> 诊断 -> 标注 -> 导出/分享（方案 §6.8 第 7 节）
 // 签名元素：5 段横向流，琥珀 -> 冷青 渐进色编码 + 连接线 + 编号节点
+import { computed } from "vue";
 import { Disc, Play, Stethoscope, MessageSquarePlus, Share2 } from "lucide-vue-next";
 import Reveal from "./Reveal.vue";
+import { useLang } from "../composables/useLang";
 
-const stages = [
-  { n: "01", icon: Disc, label: "录制", desc: "DOM 级 + 诊断信号，多窗口对齐", accent: "amber" },
-  { n: "02", icon: Play, label: "回放", desc: "多轨时间轴 + 真实播放头", accent: "amber" },
-  { n: "03", icon: Stethoscope, label: "诊断", desc: "交错信号，同一条时间轴", accent: "teal" },
-  { n: "04", icon: MessageSquarePlus, label: "标注", desc: "session 级标注，与事件流分离", accent: "teal" },
-  { n: "05", icon: Share2, label: "导出 / 分享", desc: "单文件 bundle，零依赖 JSON", accent: "amber" },
-];
+const { t } = useLang();
+
+const stages = computed(() => [
+  { n: "01", icon: Disc, label: t("loop.s1.label"), desc: t("loop.s1.desc"), accent: "amber" },
+  { n: "02", icon: Play, label: t("loop.s2.label"), desc: t("loop.s2.desc"), accent: "amber" },
+  { n: "03", icon: Stethoscope, label: t("loop.s3.label"), desc: t("loop.s3.desc"), accent: "teal" },
+  { n: "04", icon: MessageSquarePlus, label: t("loop.s4.label"), desc: t("loop.s4.desc"), accent: "teal" },
+  { n: "05", icon: Share2, label: t("loop.s5.label"), desc: t("loop.s5.desc"), accent: "amber" },
+]);
 </script>
 
 <template>
@@ -18,13 +22,13 @@ const stages = [
     <div class="section-inner">
       <Reveal>
         <header class="section-head center">
-          <p class="eyebrow mono">闭环 · 一条诊断链路</p>
+          <p class="eyebrow mono">{{ t("loop.eyebrow") }}</p>
           <h2 class="section-h2">
-            从<span class="accent-amber">录到分享</span>，<br />
-            不在五个工具间来回横跳。
+            {{ t("loop.h2_pre") }}<span class="accent-amber">{{ t("loop.h2_accent") }}</span>{{ t("loop.h2_mid") }}<br />
+            {{ t("loop.h2_suf") }}
           </h2>
           <p class="section-sub">
-            一条链路走完诊断全流程：录制采集 DOM + 诊断信号，回放多轨对齐，诊断看懂，标注留痕，导出单文件 bundle 分享。每一步都在同一个工具里。
+            {{ t("loop.sub") }}
           </p>
         </header>
       </Reveal>

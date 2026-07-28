@@ -1,37 +1,41 @@
 <script setup lang="ts">
 // Footer（方案 §6.8 第 12 节）
 // 签名元素：收束棱镜分光 beam + wordmark + 链接列 + 许可声明
+import { computed } from "vue";
 import PrismLogo from "./PrismLogo.vue";
 import GithubIcon from "./GithubIcon.vue";
+import { useLang } from "../composables/useLang";
 
-const cols = [
+const { t } = useLang();
+
+const cols = computed(() => [
   {
-    title: "产品",
+    title: t("footer.col1.title"),
     links: [
-      { label: "诊断演示", href: "#diagnosis" },
-      { label: "多窗口", href: "#multiwindow" },
-      { label: "部署形态", href: "#deploy" },
-      { label: "竞品对比", href: "#compare" },
+      { label: t("footer.col1.l1"), href: "#diagnosis" },
+      { label: t("footer.col1.l2"), href: "#multiwindow" },
+      { label: t("footer.col1.l3"), href: "#deploy" },
+      { label: t("footer.col1.l4"), href: "#compare" },
     ],
   },
   {
-    title: "资源",
+    title: t("footer.col2.title"),
     links: [
-      { label: "快速开始", href: "#quickstart" },
-      { label: "架构透明", href: "#architecture" },
-      { label: "本地优先宣言", href: "#manifesto" },
-      { label: "核心能力", href: "#capabilities" },
+      { label: t("footer.col2.l1"), href: "#quickstart" },
+      { label: t("footer.col2.l2"), href: "#architecture" },
+      { label: t("footer.col2.l3"), href: "#manifesto" },
+      { label: t("footer.col2.l4"), href: "#capabilities" },
     ],
   },
   {
-    title: "社区",
+    title: t("footer.col3.title"),
     links: [
       { label: "GitHub", href: "https://github.com/zxc125/prism" },
       { label: "rrweb", href: "https://github.com/rrweb-io/rrweb" },
       { label: "Tauri", href: "https://tauri.app" },
     ],
   },
-];
+]);
 </script>
 
 <template>
@@ -47,11 +51,11 @@ const cols = [
         <div class="footer-brand">
           <div class="wordmark">
             <PrismLogo :height="32" />
-            <span class="wordmark-text">鉴 / Prism</span>
+            <span class="wordmark-text">{{ t("nav.wordmark") }}</span>
           </div>
           <p class="footer-tag">
-            本地优先的前端观测平台。<br />
-            数据留在你手里，不上云，不锁仓。
+            {{ t("footer.tag_pre") }}<br />
+            {{ t("footer.tag_suf") }}
           </p>
           <a
             class="footer-gh"
@@ -66,13 +70,13 @@ const cols = [
 
         <nav class="footer-cols">
           <div
-            v-for="c in cols"
-            :key="c.title"
+            v-for="(c, i) in cols"
+            :key="i"
             class="footer-col"
           >
             <h4 class="col-title mono">{{ c.title }}</h4>
             <ul class="col-list">
-              <li v-for="l in c.links" :key="l.label">
+              <li v-for="(l, j) in c.links" :key="j">
                 <a :href="l.href" :target="l.href.startsWith('http') ? '_blank' : undefined" rel="noreferrer">
                   {{ l.label }}
                 </a>
@@ -83,13 +87,13 @@ const cols = [
       </div>
 
       <div class="footer-bottom">
-        <span class="mono">© 2026 鉴 / Prism</span>
+        <span class="mono">{{ t("footer.copyright") }}</span>
         <span class="mono sep">·</span>
         <span class="mono">MIT License</span>
         <span class="mono sep">·</span>
-        <span class="mono">Built on rrweb 2 + Tauri 2 + Rust</span>
+        <span class="mono">{{ t("footer.built") }}</span>
         <span class="mono sep">·</span>
-        <span class="mono">vue-bits (MIT + Commons Clause) components used</span>
+        <span class="mono">{{ t("footer.vuebits") }}</span>
       </div>
     </div>
   </footer>

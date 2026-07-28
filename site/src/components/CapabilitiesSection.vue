@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 核心能力 · 六个记忆点（方案 §6.8 第 4 节）
 // 签名元素：6 卡网格，琥珀/冷青交替色编码图标 + hover 上浮，hairline 边
+import { computed } from "vue";
 import {
   HardDrive,
   AppWindow,
@@ -10,45 +11,48 @@ import {
   FileJson,
 } from "lucide-vue-next";
 import Reveal from "./Reveal.vue";
+import { useLang } from "../composables/useLang";
 
-const caps = [
+const { t } = useLang();
+
+const caps = computed(() => [
   {
     icon: HardDrive,
     accent: "amber",
-    title: "本地优先，数据不出本地",
-    desc: "默认零云依赖。用户数据不经任何第三方服务器，隐私天然合规，无厂商锁定。",
+    title: t("capabilities.c1.title"),
+    desc: t("capabilities.c1.desc"),
   },
   {
     icon: AppWindow,
     accent: "teal",
-    title: "多窗口对齐录制，独家",
-    desc: "Tauri 多窗口共享墙上时钟，回放多轨同步。桌面应用调试的核心论点，别家做不到。",
+    title: t("capabilities.c2.title"),
+    desc: t("capabilities.c2.desc"),
   },
   {
     icon: Waves,
     accent: "amber",
-    title: "交错事件模型",
-    desc: "error / console / network 作为 type:6 交错进 DOM 事件流，共享同一条时间轴，不跨流对齐。",
+    title: t("capabilities.c3.title"),
+    desc: t("capabilities.c3.desc"),
   },
   {
     icon: Stethoscope,
     accent: "teal",
-    title: "诊断导向，不是监控",
-    desc: "不做告警、不做 RUM 指标。专注复现 -> 看懂 -> 标注 -> 分享的诊断闭环。",
+    title: t("capabilities.c4.title"),
+    desc: t("capabilities.c4.desc"),
   },
   {
     icon: Package,
     accent: "amber",
-    title: "单二进制自托管",
-    desc: "observer-server 一个文件，API + 前端一起托管。内网、离线、合规审计都能用。",
+    title: t("capabilities.c5.title"),
+    desc: t("capabilities.c5.desc"),
   },
   {
     icon: FileJson,
     accent: "teal",
-    title: "开放 bundle 契约",
-    desc: "prism-session 明文 JSON 规范，本地 / server / 云端三路共用。随时带走。",
+    title: t("capabilities.c6.title"),
+    desc: t("capabilities.c6.desc"),
   },
-];
+]);
 </script>
 
 <template>
@@ -56,13 +60,13 @@ const caps = [
     <div class="section-inner">
       <Reveal>
         <header class="section-head">
-          <p class="eyebrow mono">核心能力 · 六个记忆点</p>
+          <p class="eyebrow mono">{{ t("capabilities.eyebrow") }}</p>
           <h2 class="section-h2">
-            每一条都<span class="accent-amber">站得住</span>，<br />
-            不是 side feature 凑数。
+            {{ t("capabilities.h2_pre") }}<span class="accent-amber">{{ t("capabilities.h2_accent") }}</span>{{ t("capabilities.h2_mid") }}<br />
+            {{ t("capabilities.h2_suf") }}
           </h2>
           <p class="section-sub">
-            从采集到部署，六个可一句话讲清的能力，每个都对应产品里一个真实机制，而非营销话术。
+            {{ t("capabilities.sub") }}
           </p>
         </header>
       </Reveal>

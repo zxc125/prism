@@ -4,6 +4,9 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import PrismLogo from "./PrismLogo.vue";
 import GithubIcon from "./GithubIcon.vue";
+import { useLang } from "../composables/useLang";
+
+const { t, currentLang, toggle } = useLang();
 
 const visible = ref(false);
 const onScroll = () => {
@@ -15,19 +18,20 @@ onMounted(() =>
 onUnmounted(() => window.removeEventListener("scroll", onScroll));
 
 const links = [
-  { label: "诊断", href: "#diagnosis" },
-  { label: "多窗口", href: "#multiwindow" },
-  { label: "部署", href: "#deploy" },
-  { label: "对比", href: "#compare" },
-  { label: "开始", href: "#quickstart" },
+  { label: "nav.diagnosis", href: "#diagnosis" },
+  { label: "nav.multiwindow", href: "#multiwindow" },
+  { label: "nav.deploy", href: "#deploy" },
+  { label: "nav.compare", href: "#compare" },
+  { label: "nav.quickstart", href: "#quickstart" },
 ];
+const langLabel = () => (currentLang.value === "zh-CN" ? "EN" : "中");
 </script>
 
 <template>
   <header class="sitenav" :class="{ shown: visible }">
     <a class="nav-wordmark" href="#top">
       <PrismLogo :height="24" />
-      <span class="nav-name">鉴 / Prism</span>
+      <span class="nav-name">{{ t("nav.wordmark") }}</span>
     </a>
     <nav class="nav-links">
       <a
@@ -36,10 +40,18 @@ const links = [
         class="nav-link"
         :href="l.href"
       >
-        {{ l.label }}
+        {{ t(l.label) }}
       </a>
     </nav>
     <div class="nav-actions">
+      <button
+        class="lang-toggle"
+        type="button"
+        :aria-label="currentLang === 'zh-CN' ? 'English' : '中文'"
+        @click="toggle"
+      >
+        {{ langLabel() }}
+      </button>
       <a
         class="nav-gh"
         href="https://github.com/zxc125/prism"
@@ -49,7 +61,7 @@ const links = [
       >
         <GithubIcon :size="17" />
       </a>
-      <a class="btn btn-primary nav-cta" href="#quickstart">自托管 -></a>
+      <a class="btn btn-primary nav-cta" href="#quickstart">{{ t("nav.cta") }}</a>
     </div>
   </header>
 </template>
@@ -110,6 +122,28 @@ const links = [
   display: flex;
   align-items: center;
   gap: 0.875rem;
+}
+.lang-toggle {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-ash);
+  background: transparent;
+  border: 1px solid var(--color-hair);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  line-height: 1;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+.lang-toggle:hover {
+  color: var(--color-bone);
+  border-color: var(--color-ash);
+  background: var(--color-slate);
 }
 .nav-gh {
   display: inline-flex;

@@ -5,6 +5,11 @@ description = "本地优先前端观测平台 · Tauri 多窗口录制协调插�
 edition = "2021"
 license = "MIT"
 links = "tauri-plugin-observer"
+repository = "https://gitee.com/guoo139/rrweb-demo"
+homepage = "https://gitee.com/guoo139/rrweb-demo/blob/main/plugins/tauri-plugin-observer/README.md"
+readme = "README.md"
+keywords = ["tauri", "tauri-plugin", "session-replay", "observation", "rrweb"]
+categories = ["gui"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,7 +18,8 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # 纯存储层（落盘 + bundle）抽成独立 crate，与 observer-server 共用
-observer-storage = { path = "../../crates/observer-storage" }
+# version+path 双指定：path 供 monorepo 本地开发，version 供 crates.io 发布解析
+observer-storage = { version = "0.1.0", path = "../../crates/observer-storage" }
 
 [build-dependencies]
 tauri-plugin = { version = "2", features = ["build"] }

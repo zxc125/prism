@@ -4,6 +4,11 @@ version = "0.1.0"
 description = "本地优先前端观测平台 · 纯存储层（落盘 + annotations + bundle 契约）"
 edition = "2021"
 license = "MIT"
+repository = "https://gitee.com/guoo139/rrweb-demo"
+homepage = "https://gitee.com/guoo139/rrweb-demo/blob/main/crates/observer-storage/README.md"
+readme = "README.md"
+keywords = ["session-replay", "observation", "storage", "rrweb", "prism"]
+categories = ["development-tools::debugging"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

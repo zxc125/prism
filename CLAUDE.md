@@ -26,9 +26,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. **闭环到回放+诊断** - 不做告警/生产 RUM；诊断 = 回放带 error/console/network 上下文 + 导出/标注/分享。
 4. **交错事件模型** - error/console/network 以 rrweb plugin 事件（`type:6`）交错进同一条事件流，与 DOM 共享时间轴。
 
-阶段路径：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享 -> P7 离线采集与 bundle 契约 -> P8 云端 server 抽取 -> P9 多租户与运营加固 -> P10 console 2.0 重设计 + 浏览器化 -> P11 官网与品牌 -> P12 官网 i18n。各阶段实现细节见 [docs/阶段路径/](docs/阶段路径/)，架构方案见 [docs/架构/](docs/架构/)，品牌见 [docs/品牌/](docs/品牌/)。
+阶段路径：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享 -> P7 离线采集与 bundle 契约 -> P8 云端 server 抽取 -> P9 多租户与运营加固 -> P10 console 2.0 重设计 + 浏览器化 -> P11 官网与品牌 -> P12 官网 i18n -> P13 官网文档站（VitePress，📋 计划）。各阶段实现细节见 [docs/阶段路径/](docs/阶段路径/)，架构方案见 [docs/架构/](docs/架构/)，品牌见 [docs/品牌/](docs/品牌/)。
 
-**进度**：P1-P12 全部 ✅。下表只列「是什么 + 1-2 个核心指针 + 验证状态」，实现细节归各阶段文档（零信息丢失，已逐一核对指针落在对应 P 文档内）。
+**进度**：P1-P12 全部 ✅；P13 官网文档站 Phase 1 ✅（[方案](docs/架构/官网文档站（方案）.md) · [P13](docs/阶段路径/P13-官网文档站.md)）。下表只列「是什么 + 1-2 个核心指针 + 验证状态」，实现细节归各阶段文档（零信息丢失，已逐一核对指针落在对应 P 文档内）。
 
 | 阶段 | 主题 | 关键产出指针 | 验证 |
 | --- | --- | --- | --- |
@@ -44,6 +44,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | P10 | console 2.0 + 浏览器化 | App shell + 视觉刷新 + [tauri.ts](src/composables/tauri.ts) 抽象 + `--web-dir` 静态托管 + `/whoami` | `cargo test` 52 |
 | P11 | 官网与品牌 | [site/](site/) 12 节 + 菱形折射 logo + GH Pages 上线 + 全库改名 `prism` | `cargo test` 53 + site build |
 | P12 | 官网 i18n | [useLang](site/src/composables/useLang.ts) + zh-CN/en 字典 + 13 组件接 `t()` | `vue-tsc` 0 + site build 184.7KB |
+| P13 | 官网文档站 | VitePress 接管 `site/` + 5 篇手册（web/tauri/deploy）zh/en · [方案](docs/架构/官网文档站（方案）.md) | Phase 1 ✅ `vitepress build` 通过 |
 
 ## 架构
 

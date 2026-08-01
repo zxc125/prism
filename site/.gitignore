@@ -3,3 +3,7 @@ dist
 *.local
 *.tsbuildinfo
 .DS_Store
+
+# VitePress 构建缓存（机器生成，勿提交）
+.vitepress/cache
+.vitepress/temp

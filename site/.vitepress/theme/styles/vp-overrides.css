@@ -1,0 +1,47 @@
+/*
+ * VitePress 默认主题品牌化 —— 对齐 P10「现代科技感」token（amber/teal/ink）
+ * appearance: force-dark 下 .dark 常驻；:root 覆盖在默认主题 CSS 之后加载，胜出。
+ * 完整 token 在 src/styles/theme.css @theme 块（Tailwind v4 CSS-first）。
+ */
+:root {
+  /* 品牌主色：琥珀（链接 / 按钮 / 代码高亮） */
+  --vp-c-brand-1: var(--color-amber);
+  --vp-c-brand-2: var(--color-amber-soft);
+  --vp-c-brand-3: var(--color-amber-deep);
+  --vp-c-brand: var(--color-amber);
+
+  /* 底色：深空感 */
+  --vp-c-bg: var(--color-ink);
+  --vp-c-bg-alt: var(--color-ink-2);
+  --vp-c-bg-elv: var(--color-slate);
+  --vp-c-bg-soft: var(--color-slate-2);
+
+  /* 边线 / 分隔 */
+  --vp-c-border: var(--color-hair);
+  --vp-c-divider: var(--color-hair);
+  --vp-c-gutter: var(--color-hair);
+
+  /* 文字 */
+  --vp-c-text-1: var(--color-bone);
+  --vp-c-text-2: var(--color-bone-dim);
+  --vp-c-text-3: var(--color-ash);
+
+  /* 字体 */
+  --vp-font-family-base: var(--font-sans);
+  --vp-font-family-mono: var(--font-mono);
+}
+
+/* 首页 hero 渐变点缀（文档 home layout 用，可选） */
+:root {
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: -webkit-linear-gradient(
+    120deg,
+    var(--color-amber),
+    var(--color-teal)
+  );
+  --vp-home-hero-image-background-image: linear-gradient(
+    -45deg,
+    rgba(240, 168, 61, 0.12),
+    rgba(77, 208, 200, 0.12)
+  );
+}

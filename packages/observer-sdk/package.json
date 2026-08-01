@@ -3,18 +3,42 @@
   "version": "0.1.0",
   "description": "本地优先前端观测平台 · Web 采集 SDK",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
-  "files": ["src", "dist"],
+  "files": ["dist"],
   "scripts": {
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm typecheck && pnpm build"
+  },
+  "keywords": [
+    "rrweb",
+    "session-replay",
+    "frontend-observability",
+    "monitoring",
+    "replay",
+    "tauri",
+    "prism"
+  ],
+  "author": "guozhehong",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitee.com/guoo139/rrweb-demo.git",
+    "directory": "packages/observer-sdk"
+  },
+  "homepage": "https://gitee.com/guoo139/rrweb-demo/blob/main/packages/observer-sdk/README.md",
+  "bugs": {
+    "url": "https://gitee.com/guoo139/rrweb-demo/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "peerDependencies": {
     "rrweb": "^2"
@@ -22,6 +46,7 @@
   "devDependencies": {
     "rrweb": "^2.1.0",
     "typescript": "~5.6.2",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vite-plugin-dts": "^4"
   }
 }

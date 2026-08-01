@@ -3,6 +3,13 @@ import vue from "@vitejs/plugin-vue";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
+import { fileURLToPath, URL } from "node:url";
+
+// monorepo 内部 dev/build 直接走 SDK 源码（热更新）；npm 发布的消费方走 SDK package.json
+// exports → dist。两端入口分离，避免 dev server 误用旧 dist 产物。
+const sdkSrc = fileURLToPath(
+  new URL("./packages/observer-sdk/src/index.ts", import.meta.url),
+);
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -24,6 +31,11 @@ export default defineConfig(async () => ({
     }),
   ],
 
+  resolve: {
+    alias: {
+      "@prism/observer-sdk": sdkSrc,
+    },
+  },
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

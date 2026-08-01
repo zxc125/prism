@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@prism/observer-sdk": "workspace:*",
+    "@prism-obs/observer-sdk": "workspace:*",
     "@tauri-apps/api": "^2"
   },
   "peerDependencies": {

@@ -33,7 +33,7 @@ export default defineConfig(async () => ({
 
   resolve: {
     alias: {
-      "@prism/observer-sdk": sdkSrc,
+      "@prism-obs/observer-sdk": sdkSrc,
     },
   },
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

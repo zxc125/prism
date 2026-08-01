@@ -1,11 +1,11 @@
-# @prism/observer-sdk
+# @prism-obs/observer-sdk
 
 本地优先前端观测平台 · Web 采集 SDK。嵌入任意 web 应用，录制 DOM + 诊断信号，上报到 console（Tauri 应用）的本地 HTTP server。
 
 ## 用法
 
 ```ts
-import { init } from "@prism/observer-sdk";
+import { init } from "@prism-obs/observer-sdk";
 
 const ctrl = await init({
   appId: "my-app",

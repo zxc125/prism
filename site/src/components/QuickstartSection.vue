@@ -10,8 +10,8 @@ import { useLang } from "../composables/useLang";
 const { t } = useLang();
 
 const sdkSteps = computed(() => [
-  { prompt: "$", cmd: "pnpm add @prism/observer-sdk", note: t("quickstart.sdk.s1") },
-  { prompt: ">", cmd: 'import { recordOffline } from "@prism/observer-sdk"', note: t("quickstart.sdk.s2") },
+  { prompt: "$", cmd: "pnpm add @prism-obs/observer-sdk", note: t("quickstart.sdk.s1") },
+  { prompt: ">", cmd: 'import { recordOffline } from "@prism-obs/observer-sdk"', note: t("quickstart.sdk.s2") },
   { prompt: ">", cmd: 'recordOffline({ endpoint: "http://localhost:8080/ingest" })', note: t("quickstart.sdk.s3") },
 ]);
 

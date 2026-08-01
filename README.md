@@ -34,11 +34,11 @@
 **嵌入你的应用**（Web SDK）：
 
 ```sh
-pnpm add @prism/observer-sdk
+pnpm add @prism-obs/observer-sdk
 ```
 
 ```ts
-import { recordOffline } from "@prism/observer-sdk";
+import { recordOffline } from "@prism-obs/observer-sdk";
 recordOffline({ endpoint: "http://localhost:8080/ingest" });
 ```
 
@@ -72,7 +72,7 @@ prism/
 ├─ plugins/
 │  └─ tauri-plugin-observer/ # 录制协调插件（Local + Remote 双模式）
 ├─ packages/
-│  ├─ observer-sdk/          # @prism/observer-sdk（Web SDK，HttpSink + IndexedDBSink）
+│  ├─ observer-sdk/          # @prism-obs/observer-sdk（Web SDK，HttpSink + IndexedDBSink）
 │  └─ observer-tauri/        # Tauri App 接入驱动
 ├─ examples/
 │  ├─ web-demo/              # Web SDK 样例

@@ -8,7 +8,7 @@ importers:
 
   .:
     dependencies:
-      '@prism/observer-sdk':
+      '@prism-obs/observer-sdk':
         specifier: workspace:*
         version: link:packages/observer-sdk
       '@tauri-apps/api':
@@ -79,7 +79,7 @@ importers:
 
   examples/web-demo:
     dependencies:
-      '@prism/observer-sdk':
+      '@prism-obs/observer-sdk':
         specifier: workspace:*
         version: link:../../packages/observer-sdk
     devDependencies:
@@ -110,7 +110,7 @@ importers:
 
   packages/observer-tauri:
     dependencies:
-      '@prism/observer-sdk':
+      '@prism-obs/observer-sdk':
         specifier: workspace:*
         version: link:../observer-sdk
       '@tauri-apps/api':

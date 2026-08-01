@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@prism/observer-sdk": "workspace:*"
+    "@prism-obs/observer-sdk": "workspace:*"
   },
   "devDependencies": {
     "rrweb": "^2.1.0",

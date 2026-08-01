@@ -35,7 +35,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | P1 | 分析端页面改造 | 源监控机架 + 会话浏览器 + 诊断信号流 | — |
 | P2 | 诊断信号采集 | error/console/network hook，`type:6` 交错进事件流 | — |
 | P3 | sink 抽象 | [sink.ts](src/composables/sink.ts) `Sink` 接口 + `TauriSink` | — |
-| P4 | Web SDK | [ingest.rs](src-tauri/src/ingest.rs) + [packages/observer-sdk](packages/observer-sdk)（`@prism/observer-sdk`） | — |
+| P4 | Web SDK | [ingest.rs](src-tauri/src/ingest.rs) + [packages/observer-sdk](packages/observer-sdk)（`@prism-obs/observer-sdk`） | — |
 | P5 | Tauri Plugin | [plugins/tauri-plugin-observer](plugins/tauri-plugin-observer) Local/Remote 双模式 | — |
 | P6 | 导出/标注/分享 | session 级 `annotations.jsonl` + 单文件 bundle（`format: prism-session`） | — |
 | P7 | 离线采集 + bundle 契约 | [bundle.ts](packages/observer-sdk/src/bundle.ts) + [bundle-规范.md](docs/架构/bundle-规范.md) + 路径穿越防护 | `cargo test` 9 |

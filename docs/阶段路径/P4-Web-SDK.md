@@ -9,7 +9,7 @@
 ## 范围
 
 1. console 起本地 HTTP server（`/ingest/*`），存储层复用 self-obs 的落盘函数。
-2. 采集逻辑打包成 npm 包（`@prism/observer-sdk`），用 `HttpSink`。
+2. 采集逻辑打包成 npm 包（`@prism-obs/observer-sdk`），用 `HttpSink`。
 
 > 落地：HTTP server 在 [ingest.rs](../../src-tauri/src/ingest.rs)（tiny_http，串行）、存储函数抽到 [storage.rs](../../src-tauri/src/storage.rs)；SDK 在 [packages/observer-sdk](../../packages/observer-sdk)，self-obs 与 SDK 共用 `SegmentRecorder`；样例 [examples/web-demo](../../examples/web-demo)。
 

@@ -24,7 +24,7 @@ const tauri = isTauri();
         v-else
         icon="◌"
         title="浏览器无法自录"
-        hint="浏览器环境没有 Tauri 录制能力。请用 web SDK（@prism/observer-sdk）上报到自托管 server，或在 Tauri 桌面端使用本机通道。"
+        hint="浏览器环境没有 Tauri 录制能力。请用 web SDK（@prism-obs/observer-sdk）上报到自托管 server，或在 Tauri 桌面端使用本机通道。"
       />
     </section>
   </AppShell>

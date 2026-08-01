@@ -1,29 +1,57 @@
 {
-  "name": "@prism/observer-tauri",
+  "name": "@prism-obs/observer-tauri",
   "version": "0.1.0",
   "description": "本地优先前端观测平台 · Tauri Plugin 采集端（Remote 模式驱动）",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
-  "files": ["src"],
+  "files": ["dist"],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm typecheck && pnpm build"
+  },
+  "keywords": [
+    "rrweb",
+    "session-replay",
+    "frontend-observability",
+    "tauri",
+    "tauri-plugin",
+    "monitoring",
+    "prism"
+  ],
+  "author": "guozhehong",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitee.com/guoo139/rrweb-demo.git",
+    "directory": "packages/observer-tauri"
+  },
+  "homepage": "https://gitee.com/guoo139/rrweb-demo/blob/main/packages/observer-tauri/README.md",
+  "bugs": {
+    "url": "https://gitee.com/guoo139/rrweb-demo/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
-    "@prism-obs/observer-sdk": "workspace:*",
-    "@tauri-apps/api": "^2"
+    "@prism-obs/observer-sdk": "workspace:*"
   },
   "peerDependencies": {
+    "@tauri-apps/api": "^2",
     "rrweb": "^2"
   },
   "devDependencies": {
+    "@tauri-apps/api": "^2",
     "rrweb": "^2.1.0",
-    "typescript": "~5.6.2"
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3",
+    "vite-plugin-dts": "^4"
   }
 }

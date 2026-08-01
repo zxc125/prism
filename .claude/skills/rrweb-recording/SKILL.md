@@ -68,7 +68,7 @@ recordings/<sessionId>/
 | [plugins/tauri-plugin-observer](plugins/tauri-plugin-observer) | 独立 crate `tauri-plugin-observer`：`Session` 状态、录制命令（`plugin:observer|*`）、`on_window_ready`+`Window::on_window_event` 生命周期拦截；`Mode::{Local,Remote}`；`storage` 模块（落盘函数，console ingest 复用）；`emit_segment_start_if_active` helper；权限 `observer:default` |
 | [src-tauri/src/ingest.rs](src-tauri/src/ingest.rs) | 本地 HTTP 接收 server（tiny_http，串行）：`/ingest/{session,segment,events,lifecycle,session/end}` -> 复用插件 storage 落盘；`IngestConfig`/`IngestState`、token 鉴权、CORS、配置持久化、`handle_route`（可测试） |
 | [packages/observer-sdk](packages/observer-sdk) | npm 包 `@prism-obs/observer-sdk`：`Sink` 接口 + 类型、`HttpSink`（含 `useSessionId` 注入）/`IndexedDBSink`、信号 hook（`installSignalHooks`）、`SegmentRecorder`、`init()`；self-obs / web SDK / tauri plugin 共用 |
-| [packages/observer-tauri](packages/observer-tauri) | npm 包 `@prism/observer-tauri`：`initTauri()` Remote 模式驱动--监听插件 `recording-session`/`segment`/`observer-lifecycle` 事件驱动 `SegmentRecorder`，hidden/focus 经 `HttpSink.appendLifecycle` 上报；主窗口 `autoStart` 建 session + `bind_session` 广播 |
+| [packages/observer-tauri](packages/observer-tauri) | npm 包 `@prism-obs/observer-tauri`：`initTauri()` Remote 模式驱动--监听插件 `recording-session`/`segment`/`observer-lifecycle` 事件驱动 `SegmentRecorder`，hidden/focus 经 `HttpSink.appendLifecycle` 上报；主窗口 `autoStart` 建 session + `bind_session` 广播 |
 | [examples/tauri-demo](examples/tauri-demo) | P5 验证样例：独立 Tauri 2 应用装插件 Remote 模式，多窗口（main + child-*），`initTauri` 上报到 console |
 | [src/composables/sink.ts](src/composables/sink.ts) | `TauriSink`（包装 `plugin:observer|*` invoke，self-obs）；从 observer-sdk re-export `Sink`/`HttpSink`/`IndexedDBSink` 及类型 |
 | [src/composables/useRecorder.ts](src/composables/useRecorder.ts) | 每窗口录制器：监听会话广播与段事件、`player-*` 跳过；用 SDK 的 `SegmentRecorder`（注入 `TauriSink`）驱动 start/stop，无直接 `invoke` |
@@ -118,7 +118,7 @@ recordings/<sessionId>/
 - `pnpm exec vue-tsc --noEmit` 通过。
 - `pnpm build`（含 vite 构建）通过。
 - `pnpm --filter @prism-obs/observer-sdk build` 产 `dist/index.js`；`examples/web-demo` `tsc --noEmit` 通过。
-- `pnpm --filter @prism/observer-tauri typecheck`、`pnpm --filter tauri-demo typecheck` 通过。
+- `pnpm --filter @prism-obs/observer-tauri typecheck`、`pnpm --filter tauri-demo typecheck` 通过。
 
 ### 运行时实测
 

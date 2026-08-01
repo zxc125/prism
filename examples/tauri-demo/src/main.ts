@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { initTauri, type TauriController } from "@prism/observer-tauri";
+import { initTauri, type TauriController } from "@prism-obs/observer-tauri";
 
 // 上报目标可热切：localStorage 持久化 + 应用内配置 UI（默认本地 server，可切云端 observer-server）。
 const STORAGE_KEY = "observer-tauri-demo";

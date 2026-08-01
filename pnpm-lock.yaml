@@ -57,7 +57,7 @@ importers:
 
   examples/tauri-demo:
     dependencies:
-      '@prism/observer-tauri':
+      '@prism-obs/observer-tauri':
         specifier: workspace:*
         version: link:../../packages/observer-tauri
       '@tauri-apps/api':
@@ -113,16 +113,22 @@ importers:
       '@prism-obs/observer-sdk':
         specifier: workspace:*
         version: link:../observer-sdk
+    devDependencies:
       '@tauri-apps/api':
         specifier: ^2
         version: 2.11.1
-    devDependencies:
       rrweb:
         specifier: ^2.1.0
         version: 2.1.0
       typescript:
         specifier: ~5.6.2
         version: 5.6.3
+      vite:
+        specifier: ^6.0.3
+        version: 6.4.3(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0)
+      vite-plugin-dts:
+        specifier: ^4
+        version: 4.5.4(rollup@4.62.2)(typescript@5.6.3)(vite@6.4.3(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))
 
   site:
     dependencies:

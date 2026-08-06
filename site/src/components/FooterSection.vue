@@ -5,6 +5,7 @@ import { computed } from "vue";
 import PrismLogo from "./PrismLogo.vue";
 import GithubIcon from "./GithubIcon.vue";
 import { useLang } from "../composables/useLang";
+import { withBase } from "vitepress";
 
 const { t } = useLang();
 
@@ -21,6 +22,7 @@ const cols = computed(() => [
   {
     title: t("footer.col2.title"),
     links: [
+      { label: t("footer.col2.docs"), href: withBase("/docs/quickstart") },
       { label: t("footer.col2.l1"), href: "#quickstart" },
       { label: t("footer.col2.l2"), href: "#architecture" },
       { label: t("footer.col2.l3"), href: "#manifesto" },
@@ -77,7 +79,7 @@ const cols = computed(() => [
             <h4 class="col-title mono">{{ c.title }}</h4>
             <ul class="col-list">
               <li v-for="(l, j) in c.links" :key="j">
-                <a :href="l.href" :target="l.href.startsWith('http') ? '_blank' : undefined" rel="noreferrer">
+                <a :href="l.href" :target="l.href.startsWith('http') || l.href.startsWith('/') ? '_blank' : undefined" rel="noreferrer">
                   {{ l.label }}
                 </a>
               </li>

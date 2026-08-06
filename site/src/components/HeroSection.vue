@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from "vue";
 import PrismLogo from "./PrismLogo.vue";
 import Aurora from "./Aurora.vue";
 import { useLang } from "../composables/useLang";
+import { withBase } from "vitepress";
 
 const { t } = useLang();
 
@@ -85,6 +86,7 @@ function formatTc(s: number): string {
       <nav class="topnav">
         <a class="navlink" href="#diagnosis">{{ t("hero.topnav.diagnosis") }}</a>
         <a class="navlink" href="#deploy">{{ t("hero.topnav.deploy") }}</a>
+        <a class="navlink" :href="withBase('/docs/quickstart')" target="_blank" rel="noopener">{{ t("hero.topnav.docs") }}</a>
         <a class="navlink" href="https://github.com/zxc125/prism" rel="noreferrer">{{ t("hero.topnav.github") }}</a>
         <a class="btn btn-primary" href="#quickstart">{{ t("hero.topnav.cta") }}</a>
       </nav>

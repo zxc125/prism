@@ -5,6 +5,7 @@ import { ref, onMounted, onUnmounted } from "vue";
 import PrismLogo from "./PrismLogo.vue";
 import GithubIcon from "./GithubIcon.vue";
 import { useLang } from "../composables/useLang";
+import { withBase } from "vitepress";
 
 const { t, currentLang, toggle } = useLang();
 
@@ -23,6 +24,7 @@ const links = [
   { label: "nav.deploy", href: "#deploy" },
   { label: "nav.compare", href: "#compare" },
   { label: "nav.quickstart", href: "#quickstart" },
+  { label: "nav.docs", href: withBase("/docs/quickstart") },
 ];
 const langLabel = () => (currentLang.value === "zh-CN" ? "EN" : "中");
 </script>
@@ -39,6 +41,8 @@ const langLabel = () => (currentLang.value === "zh-CN" ? "EN" : "中");
         :key="l.href"
         class="nav-link"
         :href="l.href"
+        :target="l.href.startsWith('/') ? '_blank' : undefined"
+        rel="noopener"
       >
         {{ t(l.label) }}
       </a>

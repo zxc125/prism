@@ -12,7 +12,8 @@
     "quickstart": "开始",
     "cta": "自托管 →",
     "ctaLabel": "自托管",
-    "github": "GitHub"
+    "github": "GitHub",
+    "docs": "文档"
   },
   "hero": {
     "eyebrow": "本地优先 · 不上云 · 不锁仓",
@@ -28,6 +29,7 @@
     "topnav": {
       "diagnosis": "诊断",
       "deploy": "部署",
+      "docs": "文档",
       "github": "GitHub",
       "cta": "自托管 →"
     }
@@ -227,7 +229,7 @@
     "tag_pre": "本地优先的前端观测平台。",
     "tag_suf": "数据留在你手里，不上云，不锁仓。",
     "col1": { "title": "产品", "l1": "诊断演示", "l2": "多窗口", "l3": "部署形态", "l4": "竞品对比" },
-    "col2": { "title": "资源", "l1": "快速开始", "l2": "架构透明", "l3": "本地优先宣言", "l4": "核心能力" },
+    "col2": { "title": "资源", "docs": "文档", "l1": "快速开始", "l2": "架构透明", "l3": "本地优先宣言", "l4": "核心能力" },
     "col3": { "title": "社区" },
     "copyright": "© 2026 鉴 / Prism",
     "built": "Built on rrweb 2 + Tauri 2 + Rust",

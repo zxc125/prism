@@ -12,7 +12,8 @@
     "quickstart": "Start",
     "cta": "Self-host →",
     "ctaLabel": "Self-host",
-    "github": "GitHub"
+    "github": "GitHub",
+    "docs": "Docs"
   },
   "hero": {
     "eyebrow": "Local-first · No cloud · No lock-in",
@@ -28,6 +29,7 @@
     "topnav": {
       "diagnosis": "Diagnosis",
       "deploy": "Deploy",
+      "docs": "Docs",
       "github": "GitHub",
       "cta": "Self-host →"
     }
@@ -227,7 +229,7 @@
     "tag_pre": "A local-first frontend observability platform.",
     "tag_suf": "Your data stays in your hands — no cloud, no lock-in.",
     "col1": { "title": "Product", "l1": "Diagnosis demo", "l2": "Multi-window", "l3": "Deployment", "l4": "Comparison" },
-    "col2": { "title": "Resources", "l1": "Quick start", "l2": "Architecture", "l3": "Local-first manifesto", "l4": "Core capabilities" },
+    "col2": { "title": "Resources", "docs": "Docs", "l1": "Quick start", "l2": "Architecture", "l3": "Local-first manifesto", "l4": "Core capabilities" },
     "col3": { "title": "Community" },
     "copyright": "© 2026 Prism",
     "built": "Built on rrweb 2 + Tauri 2 + Rust",

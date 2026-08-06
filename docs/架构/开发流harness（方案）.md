@@ -124,6 +124,7 @@ CLAUDE.md              [修改] 加「开发流程 harness」段，描述 7 个�
 | 输入 | P 文档实施顺序表 + Todo |
 | 产出 | 代码改动 |
 | dispatch | 视觉变更 → `frontend-design` skill；录制/回放/session/segment → `rrweb-recording` skill |
+| **pre-flight gate** | **动手前输出改动微方案**（目标 + 影响范围 + 技术方案 + 风险标注 + 验证方式），用户确认才进实施 |
 | gate | 前端改动跑 `pnpm build`（含 vue-tsc）；Rust 改动跑 `cargo check`（受影响 crate）；不动锁定决策 |
 | 完成标志 | Todo 全勾 + 类型/编译通过 + 用户确认进 `/regress` |
 
@@ -165,6 +166,7 @@ CLAUDE.md              [修改] 加「开发流程 harness」段，描述 7 个�
 | 调用 | `/fix <bug 描述>` |
 | 输入 | bug 描述 + 复现路径 |
 | 产出 | 代码修复 + 原 P 文档末尾「修复记录」段追加（`YYYY-MM-DD <commit> <一句话>`）+ CLAUDE.md「验证」列数字更新 |
+| **pre-flight gate** | **动手前输出改动微方案**（目标 + 根因 + 影响范围 + 技术方案 + 风险标注 + 验证方式），用户确认才进修复 |
 | gate | **必须复现**（写复现步骤）→ 改 → 跑该 P 已有测试 → 回写文档 |
 | **升格准则** | 跨多个 P / 动锁定决策 / 改 bundle 契约 / 改 API → 停止 `/fix`，升格为新 P 走 `/cycle` |
 | 回归范围 | 仅该 P 已有测试 + `docs/测试/Pxx-测试流程.md` 的复现步骤，不强制全量 |

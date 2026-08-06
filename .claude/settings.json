@@ -7,5 +7,28 @@
   },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": false
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); echo \"$input\" | grep -q 'git commit' && echo '⚠️ commit 提醒：是否已跑 /regress 或至少 pnpm build？' || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$(git status --porcelain 2>/dev/null)\" ] && echo '💡 有未提交改动：是否需要 /sync-docs 同步 CLAUDE.md 进度表？' || true"
+          }
+        ]
+      }
+    ]
   }
 }

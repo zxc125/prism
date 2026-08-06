@@ -98,6 +98,30 @@ recordings/<sessionId>/
 - **个人偏好/机器相关/未定草稿** → 本地 `~/.claude/.../memory/` 或 `.claude.local.md`（均 gitignored，不跨机）。
 - 遇到决策类问题，先查本文件「四条锁定决策」+ `docs/决策/`，再动手。
 
+### 开发流程 harness
+
+本项目以「P 阶段」为开发单位（P1–P13 已落地，见进度表）。开发流已工具化为 7 个 slash commands + 4 份模板 + 2 个非阻断 hooks，完整方案见 [开发流harness（方案）](docs/架构/开发流harness（方案）.md)。
+
+**7 个命令入口**：
+
+| 命令 | 阶段 | 何时用 |
+|---|---|---|
+| `/cycle <需求>` | 全流程 | 新需求，串起 spec→plan→impl→regress→sync-docs 五步，每步 gate 通过才进下一步 |
+| `/spec <需求>` | 评审 | 单独做需求评审（产出决策 + 方案文档） |
+| `/plan` | 拆阶段 | 单独起草 P 文档 + TodoWrite |
+| `/impl` | 开发 | 按 plan 实施（dispatch `frontend-design` / `rrweb-recording` skill） |
+| `/regress` | 回归 | spawn fresh subagent 独立验证 + 产出测试流程文档 |
+| `/sync-docs` | 同步 | 更新 CLAUDE.md 进度表 + P 文档状态 |
+| `/fix <bug>` | 修复 | **既有产出的局部 bug 修复**（回写原 P 文档修复记录，不重走 cycle） |
+
+**`/fix` vs `/cycle` 升格准则**：单 P 内局部修 = `/fix`；跨阶段 / 动锁定决策 / 改 bundle 契约 / 改对外 API = 升格新 P 走 `/cycle`。
+
+**subagent 边界**：仅 `/spec`（spawn `Explore` 全文档库对照）+ `/regress`（spawn `general-purpose` fresh context 独立复核）两点用 subagent；其余主 agent 执行。
+
+**文档模板**：起草新 P 文档 / 决策 / 架构方案 / 测试流程时，用 `docs/模板/` 对应模板。`/fix` 修复记录追加到原 P 文档的 `## 修复记录` 段，格式 `YYYY-MM-DD <commit> <一句话>`。
+
+**hooks**（全非阻断，见 [settings.json](.claude/settings.json)）：`git commit` 前提醒跑回归；会话结束时若有未提交改动提醒 `/sync-docs`。阻断型 gate 在各 command 内显式执行，不挂全局 hook。
+
 ### 视觉设计约定
 
 任何涉及视觉/样式的变更（新增视图、改配色、改排版、重做交互形态）**必须先调用 `/frontend-design` skill**，按其流程（brainstorm -> critique -> build -> critique again）做出有意图的设计选择，不要直接套用 Element Plus 默认样式或通用暗色模板。

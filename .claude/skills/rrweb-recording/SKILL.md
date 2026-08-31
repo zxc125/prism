@@ -110,6 +110,7 @@ recordings/<sessionId>/
 - Web SDK + 本地接收 server（P4）：console 启动 tiny_http server 监听 `127.0.0.1:1421`（端口可配），`/ingest/*` 复用 storage 落盘到同一 `recordings/` 结构（外部会话 `source:"web"`，带 `appId`/`env`/...）；token 鉴权 + CORS；`HttpSink` 对接真实后端，批量/重试/sendBeacon 兜底。npm 包 `@prism-obs/observer-sdk` 的 `init({appId, endpoint, token, ...})` 供外部 web 应用嵌入；样例见 `examples/web-demo`。`cargo test` 覆盖 ingest 完整会话落盘格式。
 - Tauri Plugin（P5）：录制协调逻辑（Session/segment/窗口生命周期拦截）抽成独立 crate [`plugins/tauri-plugin-observer`](../../plugins/tauri-plugin-observer)，双模式 `Mode::{Local,Remote}`。Local（console self-obs）Rust 落盘、命令注册为 `plugin:observer|*`（`TauriSink` 调用，`observer:default` 权限）；Remote（外部 Tauri 应用）Rust 只协调 + 事件驱动、前端 `HttpSink` 上报，跨窗口 sessionId 由主窗口 `HttpSink.startSession` 取得后经 `bind_session` 广播共享。Tauri 2 plugin Builder 无 `on_window_event`，用 `on_window_ready` 给每窗口挂 `Window::on_window_event`。JS 驱动 [`packages/observer-tauri`](../../packages/observer-tauri) `initTauri()`（监听 `recording-session`/`segment`/`observer-lifecycle` 驱动 `SegmentRecorder`，hidden/focus 经 `HttpSink.appendLifecycle` 上报）；样例 [`examples/tauri-demo`](../../examples/tauri-demo)。console 装 Local 模式回归正常，MainView tauri 通道点亮。
 - 导出/标注/分享（P6）：标注存 session 级 `annotations.jsonl`（`{ id, t, label?, text, author, createdAt }`）与 segment 事件流分离，回放时与 signals 共享相对会话起点时间轴。console 新增 `list_annotations`/`save_annotations`/`update_session_meta`/`export_session`/`import_session` 命令（核心逻辑抽纯函数 `build_export_bundle`/`write_import_bundle`/`merge_session_meta`，可测）；[`useAnnotations`](../../src/composables/useAnnotations.ts) 持有完整列表、增删改后立即整体覆写。PlayerView 诊断栏加「信号/标注」tab + 时间轴骨白圆点标记；MainView 会话行加编辑/导出 + 顶部导入 + 元信息弹窗。导出为单文件 JSON bundle（`format: prism-session`）零新依赖，导入分配新 id 重建目录、标记 `importedAt`。
+- 录制事件量控（P14）：`SegmentRecorder` 支持 `recording` 配置（`RecordProfile` 三档 full/balanced/minimal + `domBlocks` 免录区 → rrweb `blockSelector`），[recording-profile.ts](../../packages/observer-sdk/src/recording-profile.ts) 纯函数组装、full 档零 diff；`configure()` 支持下段生效（useRecorder 每次开段前从 localStorage 刷新）。console 设置页 CaptureTab 录制档位 UI + 采集信号三开关接线（[captureSettings.ts](../../src/composables/captureSettings.ts)）。sampling 管不到 mutation——高频 DOM 渲染场景靠 domBlocks（决策见 `docs/决策/录制事件量控.md`）。
 
 ### 编译验证
 
@@ -143,7 +144,7 @@ recordings/<sessionId>/
 - 回放各 segment 仍各自跑独立 RAF，靠 120ms 阈值纠偏拉回（有界，非零漂移）；彻底零漂移需主时钟步进（方案 A，未做）。
 - 回放布局为稳定槽位 + spotlight，但**未还原原始窗口位置/尺寸**（方案 C，未做）。
 - 录制中关闭主窗口=直接退出，session.json 无 endedAt（不影响回放，但列表时长显示会以「现在」估算）。
-- 诊断信号 body/headers 默认关（PII）；SettingsView 采集开关固定全开、按需过滤待接线（接收开关已接线）。
+- 诊断信号 body/headers 默认关（PII）；P14 起采集信号三开关（error/console/network）已接线（localStorage → `signals`，下段生效），「请求体」开关未实现。
 - HttpSink 已对接 P4 本地 server；IndexedDBSink 仍为预留骨架（读取路径未补）。外部 web 会话无 `endedAt` 时列表时长以「现在」估算。
 
 ## 未实现功能（TODO）
@@ -160,7 +161,7 @@ recordings/<sessionId>/
 
 ## 扩展指引
 
-- **新增录制配置**（采样、遮罩等）：改 `useRecorder.ts` 的 `record({ emit, ...options })` 调用。诊断信号 hook 在 `installSignalHooks`（error/console/network），新增信号类型在此扩展并对应 `usePlayer` 的 `Signal` 类型；network body/headers 默认关（PII），SettingsView 的开关待接线。
+- **新增录制配置**（采样、遮罩等）：P14 起档位制——`packages/observer-sdk/src/recording-profile.ts` 的 `PRESETS` + `resolveRecordOptions()`，经 `SegmentRecorder({ recording })` / `configure()` 生效；console 侧持久化在 `src/composables/captureSettings.ts`（`prism.capture.*`），设置页 CaptureTab。诊断信号 hook 在 `installSignalHooks`（error/console/network），新增信号类型在此扩展并对应 `usePlayer` 的 `Signal` 类型；network body/headers 默认关（PII），「请求体」开关未实现（disabled 展示）。
 - **新增传输后端**：实现 `Sink` 接口（见 observer-sdk 的 `sinks.ts`），注入 `useRecorder(sink)` 或外部采集器。`HttpSink` 已对接 P4 server（endpoint/token 即 console 设置页的接入点/token；可加退避/容量上限增强）；`IndexedDBSink` 的独立回放读取路径待补。
 - **新增会话级元数据**：`update_session_meta`（合并写入 session.json，空串/null 删除字段）已落地；`list_sessions`/`read_session` 自动读取全部字段。标注走独立的 `annotations.jsonl`（`list_annotations`/`save_annotations`）。
 - **新增窗口生命周期事件**：在插件 [lifecycle.rs](../../plugins/tauri-plugin-observer/src/lifecycle.rs) 的 `handle_window_event` 增 match 分支；Local 模式 `append_lifecycle` 落 windows.jsonl，Remote 模式 emit 事件交前端 `HttpSink.appendLifecycle` 上报。回放侧 `usePlayer` 解析新 type。

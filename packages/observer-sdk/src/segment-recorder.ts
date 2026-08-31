@@ -1,12 +1,15 @@
 import { record } from "rrweb";
 import { installSignalHooks } from "./signals";
-import type { RREvent, SignalSet, Sink } from "./types";
+import { resolveRecordOptions } from "./recording-profile";
+import type { RecordingOptions, RREvent, SignalSet, Sink } from "./types";
 
 export interface SegmentRecorderOptions {
   sink: Sink;
   /** 段标签，作为 segmentId 前缀：self-obs 用窗口 label，web SDK 用 "web"。 */
   label: string;
   signals?: SignalSet;
+  /** 录制量控（P14）：档位 + 免录区。缺省 = full 档，与全量录制等价。 */
+  recording?: RecordingOptions;
   flushInterval?: number; // 默认 1000ms
 }
 
@@ -32,6 +35,15 @@ export class SegmentRecorder {
     return this.segmentId != null;
   }
 
+  /**
+   * 更新录制量控/信号配置（P14）：对下一段生效（start() 时才读取）。
+   * self-obs 在每次开段前从持久化设置刷新，无需重建实例。
+   */
+  configure(next: { recording?: RecordingOptions; signals?: SignalSet }): void {
+    if ("recording" in next) this.opts.recording = next.recording;
+    if ("signals" in next) this.opts.signals = next.signals;
+  }
+
   async start(): Promise<string> {
     if (this.destroyed) return "";
     // 防止重复开段：先停掉已有录制与信号 hook
@@ -49,7 +61,8 @@ export class SegmentRecorder {
     const emit = (e: RREvent) => {
       this.buffer.push(e);
     };
-    const stop = record({ emit });
+    // 量控参数在 start() 时 resolve（P14）：configure() 的变更对下一段生效
+    const stop = record({ emit, ...resolveRecordOptions(this.opts.recording) });
     this.stopFn = typeof stop === "function" ? (stop as () => void) : null;
     this.stopHooks = installSignalHooks(emit, this.segStart, this.opts.signals);
     if (this.flushTimer == null) {

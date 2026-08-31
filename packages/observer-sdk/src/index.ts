@@ -2,7 +2,7 @@ import { HttpSink, IndexedDBSink } from "./sinks";
 import { SegmentRecorder } from "./segment-recorder";
 import { buildBundle, type Bundle } from "./bundle";
 import { redact, type RedactionOptions } from "./redact";
-import type { OfflineSessionData, SessionMeta, SignalSet } from "./types";
+import type { OfflineSessionData, RecordingOptions, SessionMeta, SignalSet } from "./types";
 
 export interface InitOptions {
   /** 应用标识，随会话上报，用于 console 侧区分来源。 */
@@ -16,6 +16,8 @@ export interface InitOptions {
   /** 段标签，默认 "web"。SPA 路由连续，整页刷新会开新段。 */
   label?: string;
   signals?: SignalSet;
+  /** 录制量控（P14）：档位 full/balanced/minimal + domBlocks 免录区。缺省 = 全量录制。 */
+  recording?: RecordingOptions;
   /** 透传到 session meta 的额外字段。 */
   meta?: Partial<SessionMeta>;
 }
@@ -51,6 +53,7 @@ export async function init(opts: InitOptions): Promise<Controller> {
     sink,
     label: opts.label ?? "web",
     signals: opts.signals,
+    recording: opts.recording,
   });
 
   await sink.startSession();
@@ -81,6 +84,8 @@ export interface RecordOfflineOptions {
   /** 段标签，默认 "web"。 */
   label?: string;
   signals?: SignalSet;
+  /** 录制量控（P14）：档位 + domBlocks 免录区。缺省 = 全量录制。 */
+  recording?: RecordingOptions;
   /** 透传到 session meta 的额外字段。 */
   meta?: Partial<SessionMeta>;
 }
@@ -128,6 +133,7 @@ export async function recordOffline(
     sink,
     label: opts.label ?? "web",
     signals: opts.signals,
+    recording: opts.recording,
   });
   const sessionId = await sink.startSession(meta);
   await rec.start();
@@ -210,6 +216,8 @@ export {
 export type { Bundle, ParseResult } from "./bundle";
 export { redact } from "./redact";
 export type { RedactionOptions } from "./redact";
+export { resolveRecordOptions } from "./recording-profile";
+export type { RecordTuning } from "./recording-profile";
 export type {
   RREvent,
   SessionMeta,
@@ -220,4 +228,6 @@ export type {
   Source,
   Annotation,
   OfflineSessionData,
+  RecordProfile,
+  RecordingOptions,
 } from "./types";

@@ -45,6 +45,19 @@ export type SignalPlugin = "error" | "console" | "network";
 /** 诊断信号开关：默认全开；外部 SDK 可按需只开部分。 */
 export type SignalSet = "all" | Partial<Record<SignalPlugin, boolean>>;
 
+/** 录制档位（P14）：full=全量（默认，与旧版零差异）；balanced=高频通道收紧；minimal=仅关键交互。 */
+export type RecordProfile = "full" | "balanced" | "minimal";
+
+/**
+ * 录制量控配置（P14）：解决高频页面（行情推送 → 密集 DOM mutation）下录制开销与无效数据。
+ * 全缺省 = full 档，与全量录制等价。
+ */
+export interface RecordingOptions {
+  profile?: RecordProfile;
+  /** 免录区域：CSS selector 列表，命中元素及其子树的 DOM 变更不进事件流（rrweb blockSelector），回放显示占位。 */
+  domBlocks?: string[];
+}
+
 /** 用户标注（与 annotations.jsonl 一行对应）。session 级，与事件流分离。 */
 export interface Annotation {
   id: string;

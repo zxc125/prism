@@ -2,6 +2,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { SegmentRecorder } from "@prism-obs/observer-sdk";
 import { TauriSink } from "./sink";
+import { loadCaptureSettings } from "./captureSettings";
 
 /**
  * 每个窗口挂载时调用一次。负责：
@@ -26,10 +27,16 @@ export function useRecorder(sink: TauriSink = new TauriSink()) {
     return window.location.hash.startsWith("#/s/");
   }
 
-  const rec = new SegmentRecorder({ sink, label });
+  const rec = new SegmentRecorder({ sink, label, ...loadCaptureSettings() });
   let unlistenSession: UnlistenFn | null = null;
   let unlistenSegment: UnlistenFn | null = null;
   let unlistenHash: (() => void) | null = null;
+
+  // 每次开段前从持久化采集设置刷新（P14 D5/D6）：档位/免录区/信号开关对下一段生效
+  function startRec() {
+    rec.configure(loadCaptureSettings());
+    void rec.start();
+  }
 
   async function setup() {
     if (skip) return;
@@ -37,7 +44,7 @@ export function useRecorder(sink: TauriSink = new TauriSink()) {
       "recording-session",
       (e) => {
         if (e.payload.active) {
-          if (!isPlayerRoute()) void rec.start();
+          if (!isPlayerRoute()) startRec();
         } else {
           void rec.stop();
         }
@@ -47,7 +54,7 @@ export function useRecorder(sink: TauriSink = new TauriSink()) {
       "segment",
       (e) => {
         if (e.payload.action === "start") {
-          if (!isPlayerRoute()) void rec.start();
+          if (!isPlayerRoute()) startRec();
         } else {
           void rec.stop();
         }
@@ -60,7 +67,7 @@ export function useRecorder(sink: TauriSink = new TauriSink()) {
       } else {
         sink.isRecordingActive()
           .then((active) => {
-            if (active) void rec.start();
+            if (active) startRec();
           })
           .catch(() => {});
       }
@@ -71,7 +78,7 @@ export function useRecorder(sink: TauriSink = new TauriSink()) {
     // 兜底：会话开始后才创建的窗口，挂载时自启（player 路由下不启）
     try {
       const active = await sink.isRecordingActive();
-      if (active && !isPlayerRoute()) void rec.start();
+      if (active && !isPlayerRoute()) startRec();
     } catch (e) {
       console.error("[recorder] is_recording_active failed", e);
     }

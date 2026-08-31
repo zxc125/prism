@@ -16,6 +16,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   HttpSink,
   SegmentRecorder,
+  type RecordingOptions,
   type SessionMeta,
   type SignalSet,
 } from "@prism-obs/observer-sdk";
@@ -35,6 +36,8 @@ export interface InitTauriOptions {
    */
   autoStart?: boolean;
   signals?: SignalSet;
+  /** 录制量控（P14）：档位 + domBlocks 免录区。缺省 = 全量录制。 */
+  recording?: RecordingOptions;
   /** 透传到 session meta 的额外字段。 */
   meta?: Partial<SessionMeta>;
 }
@@ -59,7 +62,12 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
     ...opts.meta,
   };
   const sink = new HttpSink({ endpoint: opts.endpoint, token: opts.token, meta });
-  const rec = new SegmentRecorder({ sink, label, signals: opts.signals });
+  const rec = new SegmentRecorder({
+    sink,
+    label,
+    signals: opts.signals,
+    recording: opts.recording,
+  });
 
   let currentSegmentId: string | null = null;
   let sessionBound = false;
@@ -167,4 +175,4 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
 
 // 复用 SDK 构件导出
 export { HttpSink, SegmentRecorder } from "@prism-obs/observer-sdk";
-export type { InitOptions } from "@prism-obs/observer-sdk";
+export type { InitOptions, RecordingOptions, RecordProfile } from "@prism-obs/observer-sdk";

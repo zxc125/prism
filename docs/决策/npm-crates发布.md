@@ -27,6 +27,7 @@
 - **observer-tauri external 用正则**：`/^@tauri-apps\/api/` 匹配子路径（`/core`、`/event` 等），否则整个 `@tauri-apps/api` 被打进 bundle（80KB → 2.4KB）。
 - **observer-tauri 发布用 `pnpm publish`**（非 `npm publish`）：pnpm 自动把 `workspace:*` 解析成精确版本（`0.1.0`），否则消费方装不了。下次发版改 `workspace:^` 可得 `^0.1.0` 更灵活。
 - **国内镜像分离**：全局 registry 是 `npmmirror`（只读镜像），登录/发布都加 `--registry https://registry.npmjs.org/` 指定官方源。
+- **发布鉴权走 granular token + 2FA bypass**（2026-09-01 起）：账号开了 2FA 强制后，登录 token 发布会 403——需在 npmjs.com 生成 **Granular Access Token**（勾选 `@prism-obs/observer-sdk` + `@prism-obs/observer-tauri` 读写 + **Bypass two-factor authentication for API or CI**），替换 `~/.npmrc` 的 `//registry.npmjs.org/:_authToken=` 值。注意 token 有过期时间，过期后 401/403 需重新生成。
 
 ## crates.io 发布配置决策
 

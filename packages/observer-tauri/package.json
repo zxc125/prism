@@ -1,6 +1,6 @@
 {
   "name": "@prism-obs/observer-tauri",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "本地优先前端观测平台 · Tauri Plugin 采集端（Remote 模式驱动）",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,7 +11,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "vite build",
     "typecheck": "tsc --noEmit",

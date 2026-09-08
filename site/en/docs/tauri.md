@@ -1,6 +1,10 @@
 # Tauri Plugin
 
-`tauri-plugin-observer` + `@prism-obs/observer-tauri` — add multi-window recording coordination to a Tauri 2 desktop app, reporting to the console over HTTP.
+`tauri-plugin-observer` (Rust) + `@prism-obs/observer-tauri` (JS) — add **multi-window** recording coordination to a Tauri 2 desktop app, reporting to the console over HTTP.
+
+> **Applies to**: `@prism-obs/observer-tauri` **0.2.x** / `tauri-plugin-observer` **0.1.x**.
+
+**In this page**: register the plugin on the Rust side → call `initTauri()` in every window → grant capabilities → run multi-window. Prerequisite: a working Tauri 2 app; the console running per [Quick Start](./quickstart).
 
 ## Two modes
 
@@ -13,7 +17,7 @@ External apps always use **Remote**: Rust only coordinates windows + state + eve
 
 ## Install
 
-Rust (`Cargo.toml`):
+Rust (`src-tauri/Cargo.toml`):
 
 ```toml
 [dependencies]
@@ -33,6 +37,7 @@ Init the plugin in Remote mode and provide an `open_window` command (same label 
 ```rust
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
+/// Derive the window label from a route: / -> main, /child/123 -> child-123
 fn window_label(route: &str) -> String {
     let label = route.trim_start_matches('/').replace('/', "-");
     if label.is_empty() { "main".to_string() } else { label }
@@ -48,11 +53,15 @@ fn open_window(app: AppHandle, route: String) -> Result<String, String> {
         tauri_plugin_observer::emit_segment_start_if_active(&app, &label);
         return Ok(label);
     }
-    let init_script = format!("if (!window.location.hash) window.location.replace('#{route}');");
+    let init_script = format!(
+        "if (!window.location.hash) window.location.replace('#{route}');"
+    );
     WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+        .title(format!("App · {}", label))
         .inner_size(640.0, 480.0)
         .initialization_script(&init_script)
-        .build().map_err(|e| e.to_string())?;
+        .build()
+        .map_err(|e| e.to_string())?;
     Ok(label)
 }
 
@@ -66,42 +75,81 @@ pub fn run() {
             },
         ))
         .invoke_handler(tauri::generate_handler![open_window])
-        .run(tauri::generate_context!()).expect("error while running tauri application");
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 ```
 
-`ObserverConfig`: `mode` (set `Remote`), `main_label` (default `"main"` — closing it exits the process), `skip_focus_prefix` (skip focus recording for e.g. player windows).
+`ObserverConfig` fields:
+
+| Field | Default | Notes |
+| --- | --- | --- |
+| `mode` | `Local` | external apps set `Remote` |
+| `main_label` | `"main"` | main window label — closing it exits the process (never intercepted as hide) |
+| `skip_focus_prefix` | `""` | label prefix to skip focus recording for (e.g. player windows) |
 
 ## JS: `initTauri()`
 
-Call once **in every window**. The main window passes `autoStart: true` (creates the session + broadcasts the sessionId); child windows omit it (they self-start on the broadcast).
+Call once **in every window**. The main window passes `autoStart: true` (creates the session + broadcasts); child windows omit it (they self-start on the broadcast).
 
 ```ts
 import { initTauri } from "@prism-obs/observer-tauri";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
+const label = getCurrentWebviewWindow().label;
 const isMain = !window.location.hash || window.location.hash === "#/";
+
 const ctrl = await initTauri({
   appId: "my-tauri-app",
-  endpoint: "http://127.0.0.1:1421",
+  endpoint: "http://127.0.0.1:1421",   // console local server
   token: "<optional token>",
-  autoStart: isMain,
+  env: "dev",
+  release: "1.0.0",
+  autoStart: isMain,                    // main window creates the session and broadcasts
 });
 
+// stop this window's recording and flush buffered events; session end is driven
+// by the plugin's stop_session broadcast
 await ctrl.stop();
 ```
 
-Mechanism: the main window gets a sessionId from the console server, broadcasts it via the plugin's `bind_session`; every window listens for `recording-session` / `segment` / `observer-lifecycle` events to drive `SegmentRecorder` start/stop, reporting via `HttpSink`. Window hide/focus is detected by Rust and forwarded.
+### Full `initTauri()` options
 
-**Hot-switch the endpoint**: store endpoint/token in localStorage, provide a config UI, reload to re-init (local server ↔ cloud observer-server).
+| Option | Type | Required | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `appId` | `string` | ✅ | — | app identifier, reported with the session |
+| `endpoint` | `string` | ✅ | — | console local HTTP server, e.g. `http://127.0.0.1:1421` |
+| `token` | `string` | ➖ | — | local auth token; required when console auth is on |
+| `env` | `string` | ➖ | — | environment tag |
+| `release` | `string` | ➖ | — | release tag |
+| `autoStart` | `boolean` | ➖ | — | **main window: `true`** — starts the session (HttpSink.startSession + plugin `bind_session` broadcast). **child windows: omit** — they self-start once the `recording-session` broadcast arrives |
+| `signals` | `SignalSet` | ➖ | `"all"` | signal switches, same as the Web SDK |
+| `recording` | `RecordingOptions` | ➖ | — | recording profile (three profiles + domBlocks), same as the [Web SDK](./web#recording); omitted = full recording |
+| `meta` | `object` | ➖ | — | extra fields forwarded into session meta |
+
+Mechanism: the main window's `autoStart` gets a sessionId from the console server and broadcasts it via the plugin's `bind_session`; every window listens for `recording-session` / `segment` / `observer-lifecycle` events to drive `SegmentRecorder` start/stop, reporting via `HttpSink`. Window hide/focus is detected by Rust and forwarded.
+
+**Hot-switch the endpoint**: store endpoint/token in localStorage, provide a config UI, reload to re-init (local server ↔ cloud observer-server). [examples/tauri-demo](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) ships a ready-made config UI you can copy.
 
 ## Capabilities
 
-Authorize `observer:default` in your capabilities file:
+::: danger Every window label must be listed in capabilities
+Tauri 2 authorizes capabilities per **window label** (or glob). Any window — including dynamically opened child windows — whose label is missing from the capabilities `windows` list has **no permission for plugin commands**; the typical error is `plugin:observer|begin_segment not allowed`. When you add a route with a new label pattern, update this file too.
+:::
+
+Plugin commands need `observer:default`. The file lives in `src-tauri/capabilities/` (scaffolding generates `default.json`):
 
 ```json
-{ "permissions": ["observer:default"] }
+{
+  "identifier": "default",
+  "windows": ["main", "child-*"],
+  "permissions": ["observer:default"]
+}
 ```
+
+## Why routes use hash (`index.html#{route}`)
+
+New windows load `index.html` and locate their view via the hash (e.g. `index.html#/child/123`). Tauri serves pages over a custom protocol, and **history routing 404s on window reload or deep links** — the hash is parsed by the frontend and never hits a server, which is exactly why it's used. The `initialization_script` in the Rust `open_window` above writes the route into the hash.
 
 ## Multi-window behavior
 
@@ -109,4 +157,15 @@ Authorize `observer:default` in your capabilities file:
 - **Closing the main window = exit** (not intercepted).
 - **Cross-window alignment**: all windows share wall-clock time; events carry absolute `timestamp`s, aligned on the main timeline by shown/hidden spans on replay.
 
-Full runnable sample: [`examples/tauri-demo`](https://github.com/zxc125/prism/tree/main/examples/tauri-demo).
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `plugin:observer|… not allowed` | window label missing from capabilities | add the label (or a matching glob) to `src-tauri/capabilities/*.json` `windows` |
+| No session ever appears in the console | main window didn't pass `autoStart: true`, or endpoint/token wrong | verify the main-window detection (hash-based in the example); cross-check console Settings |
+| A child window doesn't record | `initTauri()` not called there, or label lacks permission | call it in every window's entry; check capabilities |
+| Session exists but only one lane | child window shares the main window's label and got reused | different label = different lane; check `window_label()` |
+
+## Full example
+
+Full runnable sample: [`examples/tauri-demo`](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) (multi-window + hot-switch config UI; see its README).

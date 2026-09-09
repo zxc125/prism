@@ -7,9 +7,9 @@
 | registry | 包 | 版本 | 给谁用 |
 | --- | --- | --- | --- |
 | npm | `@prism-obs/observer-sdk` | 0.2.0 | 外部 Web 应用采集 |
-| npm | `@prism-obs/observer-tauri` | 0.2.0 | 外部 Tauri 应用 JS 驱动 |
+| npm | `@prism-obs/observer-tauri` | 0.3.0 | 外部 Tauri 应用 JS 驱动（P16 起双模式：Remote 上报 / Local 本地落盘） |
 | crates.io | `observer-storage` | 0.1.0 | 存储层（plugin 的传递依赖） |
-| crates.io | `tauri-plugin-observer` | 0.1.0 | 外部 Tauri 应用 Rust 协调插件 |
+| crates.io | `tauri-plugin-observer` | 0.2.0 | 外部 Tauri 应用 Rust 协调插件（P16 起 Local 泛化 + list/export 只读命令） |
 
 **不发布**：`src-tauri/app`（主应用）、`examples/*`（示例）、`site`（官网）、`crates/observer-server`（自托管二进制，暂不发，见「未做」）。
 

@@ -3,7 +3,9 @@
 //! 把多窗口对齐录制逻辑（Session 状态、segment 分配、窗口 show/hide/focus 生命周期拦截）
 //! 抽成可复用插件，别的 Tauri 2 应用安装即得。两种部署模式：
 //!
-//! - [`Mode::Local`]：Rust 侧直接落盘到 `appDataDir/recordings/`（console 自录 self-obs）。
+//! - [`Mode::Local`]：Rust 侧直接落盘到 `appDataDir/recordings/`。console self-obs 与
+//!   外部应用 opt-in 本地落盘（P16）均用此模式；`list_sessions`/`export_session`
+//!   只读命令 Local 限定，导出 `prism-session` bundle 闭环回 console 导入回放。
 //! - [`Mode::Remote`]：Rust 侧只管窗口协调 + 状态 + 事件驱动，不落盘；
 //!   前端用 `HttpSink` 上报到 console 本地 server（外部 Tauri 应用）。
 //!
@@ -45,7 +47,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
     init_with(ObserverConfig::default())
 }
 
-/// 带配置初始化：外部 Tauri 应用用 `.mode(Mode::Remote)` 装插件。
+/// 带配置初始化：外部 Tauri 应用用 `.mode(Mode::Remote)`（HTTP 上报）或
+/// `.mode(Mode::Local)`（本地落盘，P16）装插件。
 ///
 /// ```ignore
 /// tauri::Builder::default()
@@ -66,6 +69,9 @@ pub fn init_with<R: Runtime>(config: ObserverConfig) -> TauriPlugin<R> {
             commands::is_recording_active,
             commands::begin_segment,
             commands::append_events,
+            // P16：只读命令，Local 模式限定（外部应用本地落盘 -> 导出 bundle 闭环）
+            commands::list_sessions,
+            commands::export_session,
             // Remote 模式专用：前端绑定 server 分配的 sessionId 并广播给各窗口
             commands::bind_session,
             commands::session_id,

@@ -1,7 +1,7 @@
 [package]
 name = "tauri-demo"
 version = "0.1.0"
-description = "P5 验证样例：外部 Tauri 应用装 tauri-plugin-observer（Remote 模式）"
+description = "P5/P16 验证样例：外部 Tauri 应用装 tauri-plugin-observer（Remote 上报 / Local 本地落盘双模式）"
 edition = "2021"
 
 [lib]

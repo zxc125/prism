@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@prism-obs/observer-sdk": "workspace:*",
+    "@prism-obs/observer-tauri": "workspace:*",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-opener": "^2",

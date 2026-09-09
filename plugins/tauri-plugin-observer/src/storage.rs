@@ -11,6 +11,8 @@
 pub use observer_storage::storage::{
     append_events_file, append_lifecycle, create_session, finalize_session, now_ms,
 };
+// P16：Local 模式只读命令（list/export）复用的 bundle 契约函数。
+pub use observer_storage::bundle::{build_export_bundle, list_sessions, validate_session_id};
 
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime};

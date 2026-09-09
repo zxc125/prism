@@ -2008,6 +2008,8 @@ dependencies = [
 name = "observer-storage"
 version = "0.1.0"
 dependencies = [
+ "flate2",
+ "regex",
  "serde",
  "serde_json",
 ]
@@ -3088,7 +3090,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-observer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "observer-storage",
  "serde",

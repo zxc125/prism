@@ -78,8 +78,9 @@ key 是 segmentId，形如 `<label>#<n>`（如 `web#1`、`main#0`）。value 是
 - 破坏性变更（字段语义改/移除）：bump version，import 侧按 version 分支处理，旧版仍可导入。
 - 共享测试 fixture：同一份 bundle 样例同时验证 TS `parseBundle` 与 Rust `write_import_bundle`（待补）。
 
-## 三条投递路径共用本格式
+## 四条投递路径共用本格式
 
 1. 本地文件分享：`export_session` -> bundle 文件 -> `import_session` / `import_session_path`。
 2. 云端上传：`POST /sessions/import`（Phase B），body 即本 bundle。
 3. 离线 SDK：`IndexedDBSink` 读路径 -> `buildBundle` -> 下载 / 上传。
+4. 外部 Tauri 应用本地落盘（P16）：插件 Local 模式落被观测方本机 -> 插件 `export_session` -> console `import_session`。

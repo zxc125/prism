@@ -1,38 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
-import type {
-  LifecycleEvent,
-  RREvent,
-  SessionMeta,
-  Sink,
-} from "@prism-obs/observer-sdk";
-
-// 传输抽象与外部 Sink 实现下沉到 observer-sdk 包，本文件只保留 self-obs 专用的 TauriSink。
+// 传输抽象与外部 Sink 实现下沉到 observer-sdk 包；P16 起 TauriSink 下沉到
+// @prism-obs/observer-tauri 包（console self-obs 与外部应用 Local 模式共用同一实现），
+// 此处仅 re-export。TauriSink 的行为说明见包内 src/sink.ts。
 export type { LifecycleEvent, RREvent, SessionMeta, Sink } from "@prism-obs/observer-sdk";
 export { HttpSink, IndexedDBSink } from "@prism-obs/observer-sdk";
+export { TauriSink } from "@prism-obs/observer-tauri";
 export type { HttpSinkOptions } from "@prism-obs/observer-sdk";
-
-/**
- * console 自录 Sink：包装 tauri-plugin-observer 的命令（`plugin:observer|*`）。
- * appendLifecycle 为空（Rust on_window_event 直接落盘）。
- */
-export class TauriSink implements Sink {
-  async startSession(_meta?: SessionMeta): Promise<string> {
-    return invoke<string>("plugin:observer|start_session");
-  }
-  async beginSegment(_label?: string): Promise<string> {
-    // label 由 Rust 按调用窗口推导，无需前端传
-    return invoke<string>("plugin:observer|begin_segment");
-  }
-  async appendEvents(segmentId: string, events: RREvent[]): Promise<void> {
-    await invoke("plugin:observer|append_events", { segmentId, events });
-  }
-  async appendLifecycle(_ev: LifecycleEvent): Promise<void> {
-    // self-obs 窗口生命周期由 Rust on_window_event 直接落 windows.jsonl，前端不上报
-  }
-  async endSession(): Promise<void> {
-    await invoke("plugin:observer|stop_session");
-  }
-  async isRecordingActive(): Promise<boolean> {
-    return invoke<boolean>("plugin:observer|is_recording_active");
-  }
-}

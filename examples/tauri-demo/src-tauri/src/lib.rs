@@ -1,10 +1,32 @@
-//! P5 验证样例：一个独立 Tauri 2 应用安装 tauri-plugin-observer（Remote 模式），
-//! 开多窗口录制，经 HttpSink 上报到 console 本地 server。
+//! P5/P16 验证样例：一个独立 Tauri 2 应用安装 tauri-plugin-observer，开多窗口录制。
 //!
-//! 与 console 的差别：插件用 Remote 模式（不落本地盘），sessionId 由前端从 console
-//! server 取得后经插件 bind_session 广播共享；窗口生命周期由插件 emit 事件、前端转发上报。
+//! 双模式开关（D10）：环境变量 `VITE_OBSERVER_MODE=local` 时插件用 Local 模式——Rust
+//! 直接落盘到本应用 `appDataDir/recordings/`（source=tauri + appId 随 ObserverConfig
+//! 写入 session.json），前端 `initTauri({ mode: "local" })`，可 `exportSession` 导出
+//! bundle 回 console 导入；缺省 = Remote 模式——经 HttpSink 上报 console 本地 server，
+//! sessionId 由前端取得后经插件 bind_session 广播共享。
+//! Rust 与前端共用同一环境变量（`pnpm tauri dev` 的 beforeDevCommand 继承 shell env，
+//! Vite 只把 `VITE_` 前缀变量暴露给客户端，Rust 读进程 env），单一来源防错配。
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_observer::{Mode, ObserverConfig};
+
+/// 按环境变量解析插件配置：`VITE_OBSERVER_MODE=local` -> Local（本地落盘），否则 Remote。
+fn observer_config() -> ObserverConfig {
+    if std::env::var("VITE_OBSERVER_MODE").as_deref() == Ok("local") {
+        ObserverConfig {
+            mode: Mode::Local,
+            source: "tauri".into(),
+            app_id: Some("tauri-demo".into()),
+            ..Default::default()
+        }
+    } else {
+        ObserverConfig {
+            mode: Mode::Remote,
+            ..Default::default()
+        }
+    }
+}
 
 /// 由路由推导窗口 label：/ -> main，/child/123 -> child-123。
 fn window_label(route: &str) -> String {
@@ -41,12 +63,7 @@ fn open_window(app: AppHandle, route: String) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_observer::init_with(
-            tauri_plugin_observer::ObserverConfig {
-                mode: tauri_plugin_observer::Mode::Remote,
-                ..Default::default()
-            },
-        ))
+        .plugin(tauri_plugin_observer::init_with(observer_config()))
         .invoke_handler(tauri::generate_handler![open_window])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

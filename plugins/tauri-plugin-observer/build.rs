@@ -7,6 +7,8 @@ const COMMANDS: &[&str] = &[
     "bind_session",
     "session_id",
     "notify_segment_start",
+    "list_sessions",
+    "export_session",
 ];
 
 fn main() {

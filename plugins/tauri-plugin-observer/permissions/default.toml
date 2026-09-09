@@ -9,4 +9,6 @@ permissions = [
     "allow-bind-session",
     "allow-session-id",
     "allow-notify-segment-start",
+    "allow-list-sessions",
+    "allow-export-session",
 ]

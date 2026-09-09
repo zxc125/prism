@@ -11,6 +11,9 @@ importers:
       '@prism-obs/observer-sdk':
         specifier: workspace:*
         version: link:packages/observer-sdk
+      '@prism-obs/observer-tauri':
+        specifier: workspace:*
+        version: link:packages/observer-tauri
       '@tauri-apps/api':
         specifier: ^2
         version: 2.11.1

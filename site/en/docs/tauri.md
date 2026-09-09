@@ -117,8 +117,9 @@ await ctrl.stop();
 
 | Option | Type | Required | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `appId` | `string` | ✅ | — | app identifier, reported with the session |
-| `endpoint` | `string` | ✅ | — | console local HTTP server, e.g. `http://127.0.0.1:1421` |
+| `mode` | `"remote" \| "local"` | ➖ | `"remote"` | deployment mode: `"remote"` reports to the console via HttpSink; `"local"` makes the plugin's Rust write straight to this app's `appDataDir/recordings/` (see "Local disk" below) |
+| `appId` | `string` | ✅ | — | app identifier, reported with the session; in local mode the session.json source/appId come from the Rust-side `ObserverConfig` |
+| `endpoint` | `string` | ✅ | — | console local HTTP server, e.g. `http://127.0.0.1:1421` (required in remote mode, ignored in local) |
 | `token` | `string` | ➖ | — | local auth token; required when console auth is on |
 | `env` | `string` | ➖ | — | environment tag |
 | `release` | `string` | ➖ | — | release tag |
@@ -128,6 +129,27 @@ await ctrl.stop();
 | `meta` | `object` | ➖ | — | extra fields forwarded into session meta |
 
 Mechanism: the main window's `autoStart` gets a sessionId from the console server and broadcasts it via the plugin's `bind_session`; every window listens for `recording-session` / `segment` / `observer-lifecycle` events to drive `SegmentRecorder` start/stop, reporting via `HttpSink`. Window hide/focus is detected by Rust and forwarded.
+
+### Local disk (Local mode, P16)
+
+Don't want to reach the console server? `mode: "local"` makes the plugin's Rust write the event streams straight into **this app's own** `appDataDir/recordings/` (same layout as the console); data never leaves the machine. Declare session metadata when installing the plugin on the Rust side:
+
+```rust
+tauri_plugin_observer::init_with(tauri_plugin_observer::ObserverConfig {
+    mode: tauri_plugin_observer::Mode::Local,
+    source: "tauri".into(),               // written into session.json as `source`
+    app_id: Some("my-tauri-app".into()),  // written as `appId` (key omitted when None)
+    ..Default::default()
+})
+```
+
+JS side: `initTauri({ mode: "local", appId, autoStart, ... })` (`endpoint` / `token` ignored). Close the loop back to the console any time:
+
+```ts
+const sessions = await ctrl.listSessions();     // local session metadata list (Local mode only)
+const bundle = await ctrl.exportSession(id);    // prism-session bundle JSON (Local mode only)
+// save / transport it yourself, then import it on the console sessions page for replay + diagnostics
+```
 
 **Hot-switch the endpoint**: store endpoint/token in localStorage, provide a config UI, reload to re-init (local server ↔ cloud observer-server). [examples/tauri-demo](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) ships a ready-made config UI you can copy.
 

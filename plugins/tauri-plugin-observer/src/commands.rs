@@ -1,4 +1,5 @@
-//! 录制协调命令。Local 模式落盘（self-obs），Remote 模式仅管状态 + 事件驱动。
+//! 录制协调命令。Local 模式落盘（console self-obs / 外部应用 opt-in 本地落盘，P16），
+//! Remote 模式仅管状态 + 事件驱动；`list_sessions`/`export_session` 只读命令 Local 限定。
 //!
 //! 命令泛型 `R: Runtime` 以适配任意宿主 runtime（与 tauri-plugin-opener 一致）。
 
@@ -7,11 +8,37 @@ use std::sync::Mutex;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, Window};
 
-use crate::config::Mode;
+use crate::config::{Mode, ObserverConfig};
 use crate::session::Session;
-use crate::storage::{append_events_file, append_lifecycle, finalize_session, now_ms, recordings_root};
+use crate::storage::{
+    append_events_file, append_lifecycle, build_export_bundle, finalize_session, now_ms,
+    recordings_root, validate_session_id,
+};
+use crate::storage::list_sessions as storage_list_sessions;
 
 type SessionState = Mutex<Session>;
+
+/// session.json 内容组装（start/stop 共用）。`app_id` 为 None 时省键（P16 D9，与
+/// console 现网 session.json 形态一致）；`ended_at` 供 stop 覆写回填。
+fn session_meta_payload(
+    source: &str,
+    app_id: Option<&str>,
+    id: &str,
+    started_at: i64,
+    ended_at: Option<i64>,
+) -> Value {
+    let mut m = serde_json::Map::new();
+    m.insert("id".into(), json!(id));
+    m.insert("source".into(), json!(source));
+    if let Some(app) = app_id {
+        m.insert("appId".into(), json!(app));
+    }
+    m.insert("startedAt".into(), json!(started_at));
+    if let Some(ended) = ended_at {
+        m.insert("endedAt".into(), json!(ended));
+    }
+    Value::Object(m)
+}
 
 /// Local：建目录、置 active、补记初始 focus、广播 `recording-session{active:true,id}`。
 /// Remote：仅置 active（会话目录由前端 HttpSink 在 console server 侧建），等 [`bind_session`] 绑定 sessionId 后广播。
@@ -19,7 +46,7 @@ type SessionState = Mutex<Session>;
 pub fn start_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionState>) -> Result<String, String> {
     let id = format!("{}", now_ms());
     let started_at = now_ms();
-    let mode = {
+    let (mode, source, app_id) = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.id = Some(id.clone());
         s.started_at = started_at;
@@ -28,7 +55,11 @@ pub fn start_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionStat
         s.current.clear();
         s.remote_session_id = None;
         s.dir = None;
-        s.config.mode
+        (
+            s.config.mode,
+            s.config.source.clone(),
+            s.config.app_id.clone(),
+        )
     };
 
     let dir = if mode == Mode::Local {
@@ -36,7 +67,7 @@ pub fn start_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionStat
         std::fs::create_dir_all(dir.join("segments")).map_err(|e| e.to_string())?;
         std::fs::write(
             dir.join("session.json"),
-            json!({ "id": id, "source": "self", "startedAt": started_at }).to_string(),
+            session_meta_payload(&source, app_id.as_deref(), &id, started_at, None).to_string(),
         )
         .map_err(|e| e.to_string())?;
         state.lock().map_err(|e| e.to_string())?.dir = Some(dir.clone());
@@ -107,7 +138,7 @@ pub fn session_id(state: State<'_, SessionState>) -> Result<Option<String>, Stri
 /// 两者都广播 `recording-session{active:false}`。
 #[tauri::command]
 pub fn stop_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionState>) -> Result<(), String> {
-    let (dir, id, started_at, mode) = {
+    let (dir, id, started_at, mode, source, app_id) = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.active = false;
         s.remote_session_id = None;
@@ -121,14 +152,27 @@ pub fn stop_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionState
                 );
             }
         }
-        (s.dir.clone(), s.id.clone(), s.started_at, s.config.mode)
+        (
+            s.dir.clone(),
+            s.id.clone(),
+            s.started_at,
+            s.config.mode,
+            s.config.source.clone(),
+            s.config.app_id.clone(),
+        )
     };
     if mode == Mode::Local {
         if let Some(dir) = dir {
             let ended_at = now_ms();
             let _ = finalize_session(&dir, ended_at);
             // 与原 console 行为一致：写回含 endedAt 的 session.json（失败不致命）
-            let meta = json!({ "id": id, "source": "self", "startedAt": started_at, "endedAt": ended_at });
+            let meta = session_meta_payload(
+                &source,
+                app_id.as_deref(),
+                id.as_deref().unwrap_or(""),
+                started_at,
+                Some(ended_at),
+            );
             let _ = std::fs::write(dir.join("session.json"), meta.to_string());
         }
     }
@@ -198,9 +242,100 @@ pub fn append_events(
     Ok(())
 }
 
+/// 只读命令的模式闸门：list/export 仅 Local 模式可用（Remote 数据不在本机，P16 D6）。
+fn ensure_local(config: &ObserverConfig) -> Result<(), String> {
+    if config.mode == Mode::Local {
+        Ok(())
+    } else {
+        Err("observer: list/export commands are Local-mode only".into())
+    }
+}
+
+/// Local 模式：列出本应用 `appDataDir/recordings/` 下的会话元信息（不含事件流）。
+/// 与 console 自有 `list_sessions` 同源（observer-storage），供外部应用本地落盘后
+/// 自行选择会话导出（P16）。
+#[tauri::command]
+pub fn list_sessions<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, SessionState>,
+) -> Result<Vec<Value>, String> {
+    ensure_local(&state.lock().map_err(|e| e.to_string())?.config)?;
+    Ok(storage_list_sessions(&recordings_root(&app)))
+}
+
+/// Local 模式：导出会话为 `prism-session` bundle（JSON，契约 version 1 不变，P16 D5）。
+/// 前端拿到后自行落盘/传输；session_id 纯数字校验防路径穿越（复用 P7 防护）。
+#[tauri::command]
+pub fn export_session<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, SessionState>,
+    session_id: String,
+) -> Result<Value, String> {
+    ensure_local(&state.lock().map_err(|e| e.to_string())?.config)?;
+    if !validate_session_id(&session_id) {
+        return Err(format!("invalid session id: {session_id}"));
+    }
+    build_export_bundle(&recordings_root(&app).join(&session_id))
+}
+
 /// 窗口复用时由宿主 `open_window` 调用：若录制中，定向 emit `segment{start}` 驱动
 /// 该窗口开新段。委托 [`crate::emit_segment_start_if_active`]，命令形式供 JS 调用。
 #[tauri::command]
 pub fn notify_segment_start<R: Runtime>(app: AppHandle<R>, label: String) -> Result<bool, String> {
     Ok(crate::emit_segment_start_if_active(&app, &label))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_meta_omits_app_id_and_ended_when_none() {
+        let v = session_meta_payload("tauri", None, "123", 1000, None);
+        assert_eq!(v["id"], "123");
+        assert_eq!(v["source"], "tauri");
+        assert!(v.get("appId").is_none(), "appId None 时省键（D9）");
+        assert!(v.get("endedAt").is_none());
+    }
+
+    #[test]
+    fn session_meta_includes_app_id_and_ended() {
+        let v = session_meta_payload("self", Some("demo"), "123", 1000, Some(2000));
+        assert_eq!(v["appId"], "demo");
+        assert_eq!(v["endedAt"], 2000);
+    }
+
+    #[test]
+    fn stop_overwrite_keeps_app_id() {
+        // 关键陷阱：stop_session 整文件覆写不得冲掉 appId/source
+        let start = session_meta_payload("tauri", Some("demo"), "123", 1000, None);
+        let end = session_meta_payload(
+            "tauri",
+            Some("demo"),
+            "123",
+            start["startedAt"].as_i64().unwrap(),
+            Some(2000),
+        );
+        assert_eq!(end["appId"], start["appId"]);
+        assert_eq!(end["source"], start["source"]);
+    }
+
+    #[test]
+    fn ensure_local_gates_by_mode() {
+        assert!(ensure_local(&ObserverConfig::default()).is_ok()); // 默认 Local
+        let remote = ObserverConfig {
+            mode: Mode::Remote,
+            ..Default::default()
+        };
+        assert!(ensure_local(&remote).is_err());
+    }
+
+    #[test]
+    fn export_session_id_guard_rejects_traversal() {
+        // export_session 命令以此闸门防路径穿越（P7 防护复用）
+        assert!(!validate_session_id("../etc"));
+        assert!(!validate_session_id("1/../../x"));
+        assert!(!validate_session_id(""));
+        assert!(validate_session_id("1730000000000"));
+    }
 }

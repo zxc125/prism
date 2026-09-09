@@ -116,8 +116,9 @@ await ctrl.stop();
 
 | 选项 | 类型 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- | --- |
-| `appId` | `string` | ✅ | — | 应用标识，随会话上报，console 侧区分来源 |
-| `endpoint` | `string` | ✅ | — | console 本地 HTTP server 地址，如 `http://127.0.0.1:1421` |
+| `mode` | `"remote" \| "local"` | ➖ | `"remote"` | 部署模式：`"remote"` 经 HttpSink 上报 console；`"local"` 插件 Rust 直接落盘到本应用 `appDataDir/recordings/`（见下文「本地落盘」） |
+| `appId` | `string` | ✅ | — | 应用标识，随会话上报，console 侧区分来源；local 模式下本地 session.json 的 source/appId 由 Rust 侧 `ObserverConfig` 决定 |
+| `endpoint` | `string` | ✅ | — | console 本地 HTTP server 地址，如 `http://127.0.0.1:1421`（remote 必填，local 忽略） |
 | `token` | `string` | ➖ | — | 本地鉴权 token；console 开启鉴权时必传 |
 | `env` | `string` | ➖ | — | 环境标记 |
 | `release` | `string` | ➖ | — | 版本标记 |
@@ -127,6 +128,27 @@ await ctrl.stop();
 | `meta` | `object` | ➖ | — | 透传到 session meta 的额外字段 |
 
 机制：主窗口 `autoStart` 从 console server 取得 sessionId 后经插件 `bind_session` 广播；各窗口监听 `recording-session` / `segment` / `observer-lifecycle` 事件，驱动 `SegmentRecorder` 开 / 停段，经 `HttpSink` 上报。窗口隐藏 / 聚焦由 Rust 检测后 emit，前端转发上报。
+
+### 本地落盘（Local 模式，P16）
+
+不想连 console server？`mode: "local"` 让插件 Rust 把事件流直接写到**本应用自己的** `appDataDir/recordings/`（目录结构与 console 同构），数据不离开本机。Rust 侧装插件时声明会话元数据：
+
+```rust
+tauri_plugin_observer::init_with(tauri_plugin_observer::ObserverConfig {
+    mode: tauri_plugin_observer::Mode::Local,
+    source: "tauri".into(),               // 写入 session.json 的 source
+    app_id: Some("my-tauri-app".into()),  // 写入 session.json 的 appId（None 省键）
+    ..Default::default()
+})
+```
+
+JS 侧 `initTauri({ mode: "local", appId, autoStart, ... })`（`endpoint` / `token` 忽略）。之后随时把会话闭环回 console：
+
+```ts
+const sessions = await ctrl.listSessions();     // 本地会话元信息列表（仅 Local 可用）
+const bundle = await ctrl.exportSession(id);    // prism-session bundle JSON（仅 Local 可用）
+// 自行落盘 / 传输后，在 console 会话页「导入」即可回放 + 看诊断信号
+```
 
 **上报地址热切**：endpoint / token 可存 localStorage，提供配置 UI 切换后 reload 即可（本地 server ↔ 云端 observer-server 自由切）。[examples/tauri-demo](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) 里有现成的配置 UI 可抄。
 

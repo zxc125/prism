@@ -2,7 +2,7 @@
 
 `tauri-plugin-observer`（Rust）+ `@prism-obs/observer-tauri`（JS）—— 给 Tauri 2 桌面应用装上**多窗口**录制协调，经 HTTP 上报到 console。
 
-> **适用版本**：`@prism-obs/observer-tauri` **0.4.x** / `tauri-plugin-observer` **0.2.x**。
+> **适用版本**：`@prism-obs/observer-tauri` **0.5.x** / `tauri-plugin-observer` **0.3.x**。
 
 **本页你将完成**：Rust 侧装插件 → JS 侧每个窗口调 `initTauri()` → capabilities 授权 → 多窗口跑通。前置：一个能跑的 Tauri 2 应用；console 已按 [快速开始](./quickstart) 跑通。
 
@@ -200,6 +200,8 @@ JS 侧 `initTauri({ mode: "local", appId, autoStart, ... })`（`endpoint` / `tok
 ```ts
 const sessions = await ctrl.listSessions();     // 本地会话元信息列表（仅 Local 可用）
 const bundle = await ctrl.exportSession(id);    // prism-session bundle JSON（仅 Local 可用）
+// 大会话推荐：插件直接写盘，返回写入字节数（仅 Local 可用，P18；path 常来自系统保存对话框）
+const bytes = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json");
 // 自行落盘 / 传输后，在 console 会话页「导入」即可回放 + 看诊断信号
 ```
 

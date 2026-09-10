@@ -11,4 +11,5 @@ permissions = [
     "allow-notify-segment-start",
     "allow-list-sessions",
     "allow-export-session",
+    "allow-export-session-to-file",
 ]

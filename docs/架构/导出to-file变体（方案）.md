@@ -132,7 +132,7 @@ async exportSessionToFile(sessionId: string, path: string) {
 
 | Phase | 内容 | 产出 | 依赖 |
 |---|---|---|---|
-| A | 插件命令 + 权限 + 单测 ×4（happy path 忽略 exportedAt 比对 / Remote 闸门 / 坏 session_id / 原子写 tmp 清理） | `cargo test` 过 | — |
+| A | 插件命令 + 权限 + handler 注册 + 新增单测 ×3（happy path 忽略 exportedAt 比对 / 覆写 / 会话目录缺失不落文件；Remote 闸门与坏 session_id 两案例由既有 `ensure_local_gates_by_mode`/`export_session_id_guard_rejects_traversal` 覆盖） | `cargo test` 过 | — |
 | B | TS 包装 + 双包版本号 + 手册 zh/en | typecheck/build 过 | A |
 | C | 发版 crates 0.3.0 + npm 0.5.0（`--registry crates-io --no-verify`，见 [npm-crates发布](../决策/npm-crates发布.md)） | 两 registry 可拉 | A+B |
 | D | /regress：fresh subagent 复核 + 测试流程文档（tauri-demo 大会话导出不冻结 + to-file 产物 console 导入回放） | [docs/测试/P18-测试流程.md](../测试/) | A-C |

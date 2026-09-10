@@ -11,7 +11,7 @@
 ## 技术路线决策
 
 - **D5 扩展而非推翻**：D5 原文「落盘**目标**由宿主决定（fs/dialog 插件各异）」——变体仍由宿主传 `path`，插件只代执行「大 JSON 序列化 + 文件写入」两个高开销动作，落盘目标决定权不变。动机：几十 MB bundle 经 JS stringify + 字节数组 + IPC 三重放大（提案②③），Rust 直写盘根治。
-- **执行模型用 `async fn` + `spawn_blocking`，不用 `#[tauri::command(async)]` 属性**：区别于 P17 D3（既有命令最小改动）——新命令无兼容包袱，且 build→serialize→write 是**秒级**阻塞，须丢到阻塞线程池而非占用 async runtime worker。
+- **执行模型：重活由 `async fn` + `spawn_blocking` 承载**：区别于 P17 D3（既有命令最小改动）——新命令无兼容包袱，且 build→serialize→write 是**秒级**阻塞，须丢到阻塞线程池而非占用 async runtime worker。`#[tauri::command(async)]` 属性仍要加（方案 §4.1 同款）：带借用参数（`State`）的 async 命令默认跑主线程，属性强制其上异步运行时——属性只管命令入口线程，不承载重活。
 - **原子写**：同级 `.tmp` 写入成功后 rename 到目标路径（P7 导入侧惯例）。磁盘满/中断不留残缺 bundle。
 - **键序与逐字节一致性**：本仓未开 serde_json `preserve_order`（Map = BTreeMap 排序键），`export_session` 响应与 to-file 落盘走同一份 serde_json，键序天然一致；唯一差异是 `exportedAt: now_ms()` 每次调用必变——**验收为「除 `exportedAt` 外逐字节一致」**（修正 bond 提案 §5 原文「逐字节一致」，按原文必失败）。
 

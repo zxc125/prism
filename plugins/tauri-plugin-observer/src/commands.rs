@@ -291,6 +291,44 @@ pub fn export_session<R: Runtime>(
     build_export_bundle(&recordings_root(&app).join(&session_id))
 }
 
+/// bundle 序列化 + 原子写盘（`.tmp` + rename，P7 惯例）。独立纯函数便于单测
+/// （命令外壳只做门禁 + 丢线程池）。返回写入字节数。
+fn write_bundle_to_file(dir: &std::path::Path, path: &str) -> Result<u64, String> {
+    let bundle = build_export_bundle(dir)?;
+    let json = serde_json::to_string(&bundle).map_err(|e| e.to_string())?;
+    let tmp = format!("{path}.tmp");
+    std::fs::write(&tmp, json.as_bytes()).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
+    Ok(json.len() as u64)
+}
+
+/// Local 模式：导出会话 bundle 并由插件直接写盘（P18，D5 扩展——落盘目标仍由宿主传
+/// `path` 决定，插件代执行大 JSON 序列化与文件写入，避开宿主 JS 主线程与大载荷 IPC，
+/// bond 0910 提案改动 B）。返回写入字节数。`path` 天然任意（通常经 save 对话框取得，
+/// 不做白名单——`observer:default` 已含 `allow-export-session`，数据面无能力升级）；
+/// `session_id` 仍走 P7 穿越防护。
+///
+/// 执行模型（P18 D3）：`async fn` + [`tauri::async_runtime::spawn_blocking`]——build +
+/// serialize + write 为秒级操作，丢阻塞线程池不占 async worker；`State` 不可 move 进
+/// 闭包，门禁与路径拼装在闭包外完成且锁不跨 await。带借用参数（`State`）的 async 命令
+/// 默认跑主线程，`(async)` 属性强制上异步运行时（与 P17 D3 属性语义同源）。
+#[tauri::command(async)]
+pub async fn export_session_to_file<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, SessionState>,
+    session_id: String,
+    path: String,
+) -> Result<u64, String> {
+    ensure_local(&state.lock().map_err(|e| e.to_string())?.config)?;
+    if !validate_session_id(&session_id) {
+        return Err(format!("invalid session id: {session_id}"));
+    }
+    let dir = recordings_root(&app).join(&session_id);
+    tauri::async_runtime::spawn_blocking(move || write_bundle_to_file(&dir, &path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// 窗口复用时由宿主 `open_window` 调用：若录制中，定向 emit `segment{start}` 驱动
 /// 该窗口开新段。委托 [`crate::emit_segment_start_if_active`]，命令形式供 JS 调用。
 #[tauri::command]
@@ -350,5 +388,68 @@ mod tests {
         assert!(!validate_session_id("1/../../x"));
         assert!(!validate_session_id(""));
         assert!(validate_session_id("1730000000000"));
+    }
+
+    /// 最小会话目录 fixture：session.json + 一段两事件（导出内容比对够用）。
+    fn fixture_session(dir: &std::path::Path) {
+        std::fs::create_dir_all(dir.join("segments")).unwrap();
+        std::fs::write(
+            dir.join("session.json"),
+            r#"{"id":"1730000000000","source":"tauri","startedAt":1000}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("segments").join("main#0.jsonl"),
+            "{\"type\":2,\"t\":1}\n{\"type\":3,\"t\":2}\n",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn to_file_matches_export_ignoring_exported_at() {
+        // P18 验收：to-file 产物与 export_session 返回内容「除 exportedAt 外逐字节一致」
+        // （exportedAt: now_ms() 每次调用必变，直接比字节必失败）
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("1730000000000");
+        fixture_session(&dir);
+        let target = root.path().join("out.bundle.json");
+
+        let mut expect = build_export_bundle(&dir).unwrap();
+        let n = write_bundle_to_file(&dir, target.to_str().unwrap()).unwrap();
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
+        expect["exportedAt"] = written["exportedAt"].clone(); // 对齐时间戳后比 canonical 文本
+        assert_eq!(
+            serde_json::to_string(&expect).unwrap(),
+            serde_json::to_string(&written).unwrap()
+        );
+        assert_eq!(n, std::fs::metadata(&target).unwrap().len());
+        // 原子写：.tmp 已被 rename 消费，不留残件
+        assert!(!root.path().join("out.bundle.json.tmp").exists());
+    }
+
+    #[test]
+    fn to_file_overwrites_existing_target() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("1730000000000");
+        fixture_session(&dir);
+        let target = root.path().join("out.bundle.json");
+        std::fs::write(&target, "stale").unwrap();
+
+        write_bundle_to_file(&dir, target.to_str().unwrap()).unwrap();
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
+        assert_eq!(written["format"], "prism-session");
+    }
+
+    #[test]
+    fn to_file_errors_when_session_dir_missing() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("out.bundle.json");
+        let err = write_bundle_to_file(&root.path().join("nope"), target.to_str().unwrap());
+        assert!(err.is_err());
+        // 失败不落任何文件（含 .tmp）
+        assert!(!target.exists());
+        assert!(!root.path().join("out.bundle.json.tmp").exists());
     }
 }

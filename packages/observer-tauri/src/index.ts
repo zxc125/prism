@@ -80,6 +80,12 @@ export interface TauriController {
   /** 仅 Local 模式可用（remote 抛错）：导出 prism-session bundle JSON，宿主自行落盘/传输。 */
   exportSession(sessionId: string): Promise<unknown>;
   /**
+   * 仅 Local 模式可用（remote 抛错）：导出 bundle 由插件直写 `path`，返回写入字节数
+   * （P18，D5 扩展）。大会话推荐——Rust 侧序列化 + 落盘，避开宿主 JS 主线程与大载荷 IPC；
+   * `.tmp` + rename 原子写。`path` 通常经系统 save 对话框取得。
+   */
+  exportSessionToFile(sessionId: string, path: string): Promise<number>;
+  /**
    * 手动开段（P17 D4，幂等）：段已活跃时早退。门控策略（交互监听/判闲/异常兜底）
    * 由宿主实现——本方法只提供机制。配 `gating: "manual"` 使用；不开 gating 时
    * 调用也无害（事件驱动路径仍在，见各宿主职责权衡）。
@@ -273,6 +279,10 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
     async exportSession(sessionId: string) {
       if (!local) throw new Error("[observer-tauri] exportSession 仅 Local 模式可用");
       return invoke<unknown>("plugin:observer|export_session", { sessionId });
+    },
+    async exportSessionToFile(sessionId: string, path: string) {
+      if (!local) throw new Error("[observer-tauri] exportSessionToFile 仅 Local 模式可用");
+      return invoke<number>("plugin:observer|export_session_to_file", { sessionId, path });
     },
     // 手动档（P17 D4/D5）：方法体引用的是上方同名局部闭包（对象方法名不入词法
     // 作用域，无递归风险）。startSegment/stopSegment 闭包自带 rec.active 幂等守卫。

@@ -9,6 +9,7 @@ const COMMANDS: &[&str] = &[
     "notify_segment_start",
     "list_sessions",
     "export_session",
+    "export_session_to_file",
 ];
 
 fn main() {

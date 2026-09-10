@@ -2,7 +2,7 @@
 
 `tauri-plugin-observer` (Rust) + `@prism-obs/observer-tauri` (JS) — add **multi-window** recording coordination to a Tauri 2 desktop app, reporting to the console over HTTP.
 
-> **Applies to**: `@prism-obs/observer-tauri` **0.4.x** / `tauri-plugin-observer` **0.2.x**.
+> **Applies to**: `@prism-obs/observer-tauri` **0.5.x** / `tauri-plugin-observer` **0.3.x**.
 
 **In this page**: register the plugin on the Rust side → call `initTauri()` in every window → grant capabilities → run multi-window. Prerequisite: a working Tauri 2 app; the console running per [Quick Start](./quickstart).
 
@@ -202,6 +202,9 @@ JS side: `initTauri({ mode: "local", appId, autoStart, ... })` (`endpoint` / `to
 ```ts
 const sessions = await ctrl.listSessions();     // local session metadata list (Local mode only)
 const bundle = await ctrl.exportSession(id);    // prism-session bundle JSON (Local mode only)
+// large sessions: let the plugin write the file directly, returns bytes written (Local mode only;
+// the path usually comes from the system save dialog)
+const bytes = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json");
 // save / transport it yourself, then import it on the console sessions page for replay + diagnostics
 ```
 

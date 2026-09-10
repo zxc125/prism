@@ -87,7 +87,7 @@ prism/
 
 | 任务 | 命令 |
 | --- | --- |
-| console 前端 dev（端口 1420） | `pnpm dev` |
+| console 前端 dev（端口 1520） | `pnpm dev` |
 | 完整 Tauri 桌面应用 | `pnpm tauri dev` |
 | 构建桌面安装包 | `pnpm tauri build` |
 | 官网 dev（端口 4321） | `pnpm dev:site` |

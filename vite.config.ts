@@ -41,15 +41,16 @@ export default defineConfig(async () => ({
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
+  //    端口 1520：避让 Tauri 生态默认的 1420（多 Tauri 项目并行开发时冲突）
   server: {
-    port: 1420,
+    port: 1520,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: 1521,
         }
       : undefined,
     watch: {

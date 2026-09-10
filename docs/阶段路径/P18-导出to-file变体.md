@@ -2,7 +2,7 @@
 
 > 阶段路径第 18 阶段。目标：插件新增 `export_session_to_file`（Local 模式，Rust 代执行大 JSON 序列化 + 落盘），根治导出链路②③热点。承接 P16（外部应用本地落盘）+ P17 补丁 0.2.2（改动 A：`export_session` async 化）。来源：bond/frontend 0910 提案改动 B。方案见 [导出to-file变体（方案）](../架构/导出to-file变体（方案）.md)。
 >
-> **进度**：🚧 代码/文档/回归 ✅，发版待确认。spec（1.0）+ 实施（1.1/1.2）+ 回归（1.3）全过；余 1.4 发版 crates 0.3.0 / npm 0.5.0（需明确授权后执行）。
+> **进度**：✅ 落地（2026-09-10）。spec/实施/回归全过 + subagent 复核 4 项发现已修；发版 crates 0.3.0 + npm 0.5.0 已发布。
 
 ## 目标 ★
 
@@ -35,7 +35,7 @@ bond/frontend 导出实测发现导出链路三热点（提案 §1）：①Rust 
 | 1.1 | 插件命令 + 权限 + handler 注册 + 新增单测 ×3（Remote 闸门/坏 id 两案例由既有测试覆盖） | commands.rs / lib.rs / build.rs / default.toml | ✅ |
 | 1.2 | TS 包装 + 双包版本 + 手册 zh/en | index.ts / package.json ×2 / tauri.md ×2 | ✅ |
 | 1.3 | 回归：cargo test + 包 typecheck/build + subagent 复核 + 测试流程文档 | [docs/测试/P18-测试流程.md](../测试/P18-测试流程.md) | ✅ subagent 报 1 阻断（handler 漏注册）+ 3 建议，全部已修复验 |
-| 1.4 | 发版 crates 0.3.0 + npm 0.5.0 + npm-crates发布.md + sync-docs | 两 registry 可拉 | 📋 |
+| 1.4 | 发版 crates 0.3.0 + npm 0.5.0 + npm-crates发布.md + sync-docs | 两 registry 可拉 | ✅ 2026-09-10 双源发布成功 |
 
 ## 关键陷阱（可选，实施时发现）
 

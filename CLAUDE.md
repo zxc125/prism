@@ -26,9 +26,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. **闭环到回放+诊断** - 不做告警/生产 RUM；诊断 = 回放带 error/console/network 上下文 + 导出/标注/分享。
 4. **交错事件模型** - error/console/network 以 rrweb plugin 事件（`type:6`）交错进同一条事件流，与 DOM 共享时间轴。
 
-阶段路径：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享 -> P7 离线采集与 bundle 契约 -> P8 云端 server 抽取 -> P9 多租户与运营加固 -> P10 console 2.0 重设计 + 浏览器化 -> P11 官网与品牌 -> P12 官网 i18n -> P13 官网文档站 -> P14 录制事件量控 -> P15 手册小白化 -> P16 外部应用本地落盘 -> P17 段控制上收与性能加固。各阶段实现细节见 [docs/阶段路径/](docs/阶段路径/)，架构方案见 [docs/架构/](docs/架构/)，品牌见 [docs/品牌/](docs/品牌/)。
+阶段路径：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享 -> P7 离线采集与 bundle 契约 -> P8 云端 server 抽取 -> P9 多租户与运营加固 -> P10 console 2.0 重设计 + 浏览器化 -> P11 官网与品牌 -> P12 官网 i18n -> P13 官网文档站 -> P14 录制事件量控 -> P15 手册小白化 -> P16 外部应用本地落盘 -> P17 段控制上收与性能加固 -> P18 导出to-file变体。各阶段实现细节见 [docs/阶段路径/](docs/阶段路径/)，架构方案见 [docs/架构/](docs/架构/)，品牌见 [docs/品牌/](docs/品牌/)。
 
-**进度**：P1-P12 全部 ✅；P13 官网文档站 Phase 1 ✅（[方案](docs/架构/官网文档站（方案）.md) · [P13](docs/阶段路径/P13-官网文档站.md)）；P14 录制事件量控 🚧（A/B + 发版 + 实测 + 3.3 手册 ✅，余 2.3 手动对照，[P14](docs/阶段路径/P14-录制事件量控.md)）；P15 手册小白化 ✅（[P15](docs/阶段路径/P15-手册小白化.md)，全链路 live run 留手动场景）；P16 外部应用本地落盘 ✅（[P16](docs/阶段路径/P16-外部应用本地落盘.md)，实测 + 发版 crates 0.2.0 / npm 0.3.0）；P17 段控制上收与性能加固 ✅（[P17](docs/阶段路径/P17-段控制上收与性能加固.md)，上游含发版 crates 0.2.1（+0910 补丁 0.2.2：`export_session` async 化）/ npm 0.3.0·0.4.0 + 下游对接验收完成 2026-09-10）。下表只列「是什么 + 1-2 个核心指针 + 验证状态」，实现细节归各阶段文档（零信息丢失，已逐一核对指针落在对应 P 文档内）。
+**进度**：P1-P12 全部 ✅；P13 官网文档站 Phase 1 ✅（[方案](docs/架构/官网文档站（方案）.md) · [P13](docs/阶段路径/P13-官网文档站.md)）；P14 录制事件量控 🚧（A/B + 发版 + 实测 + 3.3 手册 ✅，余 2.3 手动对照，[P14](docs/阶段路径/P14-录制事件量控.md)）；P15 手册小白化 ✅（[P15](docs/阶段路径/P15-手册小白化.md)，全链路 live run 留手动场景）；P16 外部应用本地落盘 ✅（[P16](docs/阶段路径/P16-外部应用本地落盘.md)，实测 + 发版 crates 0.2.0 / npm 0.3.0）；P17 段控制上收与性能加固 ✅（[P17](docs/阶段路径/P17-段控制上收与性能加固.md)，上游含发版 crates 0.2.1（+0910 补丁 0.2.2：`export_session` async 化）/ npm 0.3.0·0.4.0 + 下游对接验收完成 2026-09-10）；P18 导出 to-file 变体 🚧（[P18](docs/阶段路径/P18-导出to-file变体.md)，代码/文档/回归 ✅，发版 crates 0.3.0 / npm 0.5.0 待确认）。下表只列「是什么 + 1-2 个核心指针 + 验证状态」，实现细节归各阶段文档（零信息丢失，已逐一核对指针落在对应 P 文档内）。
 
 | 阶段 | 主题 | 关键产出指针 | 验证 |
 | --- | --- | --- | --- |
@@ -49,6 +49,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | P15 | 手册小白化 | [site/docs/](site/docs/) zh/en ×5 重写加深（五段式 + 选项全集表 + recording 量控章节）+ examples README ×2 · [P15](docs/阶段路径/P15-手册小白化.md) · [测试流程](docs/测试/P15-测试流程.md) | `pnpm build:site` ✅ 死链 0；fresh subagent 契约比对 ✅（5 处失实已修） |
 | P16 | 外部应用本地落盘 | 插件 [commands.rs](plugins/tauri-plugin-observer/src/commands.rs) Local 限定 list/export 只读命令 + `ObserverConfig` source/appId · [observer-tauri](packages/observer-tauri) `initTauri(mode)` + TauriSink 下沉 · [方案](docs/架构/外部应用本地落盘（方案）.md) · [测试流程](docs/测试/P16-测试流程.md) | `cargo test` 5+22+31 全过 · subagent 契约复核 + 3.2 实测 ✅ · 发版 crates 0.2.0 + npm 0.3.0 |
 | P17 | 段控制上收与性能加固 | [segment-recorder.ts](packages/observer-sdk/src/segment-recorder.ts) `signal()` + flush 串行化 · [observer-tauri](packages/observer-tauri/src/index.ts) controller 手动档（`startSegment`/`stopSegment`/`signal`/`active` + `gating: "manual"`）· 插件 `append_events` async 化（脱主线程；`export_session` 同类遗漏由 0.2.2 补，含 console 自有命令）· [方案](docs/架构/段控制上收与性能加固（方案）.md) · [测试流程](docs/测试/P17-测试流程.md) | ✅ cargo test 5 + vitest 3 + console/site build ✅ + subagent 复核全过 · 发版 crates 0.2.1+0.2.2 + npm 0.3.0·0.4.0 · 下游对接验收完成 2026-09-10 |
+| P18 | 导出 to-file 变体 | 插件 `export_session_to_file`（async + spawn_blocking + `.tmp` 原子写，Local 限定）+ [observer-tauri](packages/observer-tauri/src/index.ts) `exportSessionToFile` · [方案](docs/架构/导出to-file变体（方案）.md) · [测试流程](docs/测试/P18-测试流程.md) | cargo test 8 + vitest 3 + console/site build ✅ + subagent 复核（1 阻断已修）· 发版 crates 0.3.0 / npm 0.5.0 待确认 |
 
 ## 架构
 

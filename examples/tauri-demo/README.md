@@ -17,6 +17,18 @@ pnpm tauri dev
 - 默认上报 `http://127.0.0.1:1421`；应用内置配置 UI 可改 endpoint / token（存 localStorage，改完自动 reload 重连），也支持 URL 参数 `?endpoint=...&token=...`。
 - **✅ 跑通的标志**：窗口状态区显示「采集中 · 主窗口」（绿点）；console 会话浏览器出现 appId 为 `tauri-demo` 的会话。
 
+## 手动档门控（P17）
+
+环境变量开关（缺省 = 常录，会话活跃即持续录制）：
+
+```sh
+VITE_OBSERVER_GATING=manual pnpm tauri dev
+```
+
+- `gating: "manual"` 下，`recording-session{active}` 广播与挂载兜底**不再自动开段**；段边界由 demo 内置的最小宿主策略驱动：交互（pointerdown/keydown/wheel/touchstart）开段、30s 判闲停段、空闲期异常（`boom` 按钮）经 `controller.signal("error", …)` 开段注入。
+- **✅ 跑通的标志**：状态区显示「手动档 · 等待交互开段」；不交互时 `segments/` 无新段文件，交互后开段、30s 后自动收段；空闲期点 `boom`，回放段头部能看到 error 信号。
+- 机制说明见 [Tauri Plugin 手册](../../site/docs/tauri.md)；两种模式（`VITE_OBSERVER_MODE=local|remote`）均可叠加本开关。
+
 ## 看点
 
 - **多窗口**：应用内按钮开子窗口——不同 label = 不同轨道，console 回放时多轨时间轴对齐。

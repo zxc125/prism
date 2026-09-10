@@ -22,6 +22,7 @@ import {
   SegmentRecorder,
   type RecordingOptions,
   type SessionMeta,
+  type SignalPlugin,
   type SignalSet,
   type Sink,
 } from "@prism-obs/observer-sdk";
@@ -53,6 +54,14 @@ export interface InitTauriOptions {
   signals?: SignalSet;
   /** 录制量控（P14）：档位 + domBlocks 免录区。缺省 = 全量录制。 */
   recording?: RecordingOptions;
+  /**
+   * 段门控（P17 手动档）。`"manual"`：`recording-session{active}` 广播与挂载兜底
+   * 不再自动开段（只置会话态/绑 sessionId），段边界由宿主经 controller 的
+   * `startSegment`/`stopSegment`/`signal` 驱动（交互/判闲/异常兜底策略全在宿主）；
+   * 窗口可见性驱动的 `segment{start/stop}` 事件不受影响（复用显示/隐藏仍自动开停段）。
+   * 缺省 = 现行为（会话活跃即持续录制），存量零 diff。
+   */
+  gating?: "manual";
   /** 透传到 session meta 的额外字段。 */
   meta?: Partial<SessionMeta>;
 }
@@ -64,16 +73,36 @@ export interface TauriController {
    * 广播 -> 主窗口 endSession 链路驱动）。
    */
   stop(): Promise<void>;
+  /** 当前段是否活跃（P17）：宿主门控策略的判据（如空闲异常兜底只在段未活跃时注入）。 */
+  readonly active: boolean;
   /** 仅 Local 模式可用（remote 抛错）：列出本应用本地会话元信息。 */
   listSessions(): Promise<unknown[]>;
   /** 仅 Local 模式可用（remote 抛错）：导出 prism-session bundle JSON，宿主自行落盘/传输。 */
   exportSession(sessionId: string): Promise<unknown>;
+  /**
+   * 手动开段（P17 D4，幂等）：段已活跃时早退。门控策略（交互监听/判闲/异常兜底）
+   * 由宿主实现——本方法只提供机制。配 `gating: "manual"` 使用；不开 gating 时
+   * 调用也无害（事件驱动路径仍在，见各宿主职责权衡）。
+   */
+  startSegment(): Promise<void>;
+  /**
+   * 手动停段（P17 D4/D5，幂等）：段未活跃时早退。不补 hidden lifecycle——
+   * 窗口隐藏语义归 Rust on_window_event（Local 落 windows.jsonl）与
+   * `segment{stop}` 事件（Remote 补报），手动停段是宿主策略边界、非窗口隐藏。
+   */
+  stopSegment(): Promise<void>;
+  /**
+   * 注入 type:6 诊断信号进当前段流（P17 D1）：与信号 hook 产出同构，交错进
+   * 同一条事件流。段未活跃时丢弃——「空闲异常兜底」应先 `startSegment()` 再注入。
+   */
+  signal(plugin: SignalPlugin, payload: unknown): void;
 }
 
 export async function initTauri(opts: InitTauriOptions): Promise<TauriController> {
   const label = getCurrentWebviewWindow().label;
   const isMain = !!opts.autoStart;
   const local = opts.mode === "local";
+  const manualGating = opts.gating === "manual";
   if (!local && !opts.endpoint) {
     throw new Error("[observer-tauri] endpoint is required in remote mode");
   }
@@ -139,7 +168,8 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
             httpSink?.useSessionId(e.payload.sessionId);
             sessionBound = true;
           }
-          await startSegment();
+          // manual 门控（P17）：会话活跃只置态/绑 sessionId，段由宿主策略开
+          if (!manualGating) await startSegment();
         } else {
           await stopSegment(false);
           if (isMain && !local) await sink.endSession();
@@ -191,9 +221,9 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
         if (sid) {
           httpSink?.useSessionId(sid);
           sessionBound = true;
-          await startSegment();
+          if (!manualGating) await startSegment();
         }
-      } else {
+      } else if (!manualGating) {
         await startSegment();
       }
     }
@@ -219,6 +249,9 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
   }
 
   return {
+    get active() {
+      return rec.active;
+    },
     async stop() {
       unlistens.forEach((fn) => fn?.());
       unlistens.length = 0;
@@ -240,6 +273,18 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
     async exportSession(sessionId: string) {
       if (!local) throw new Error("[observer-tauri] exportSession 仅 Local 模式可用");
       return invoke<unknown>("plugin:observer|export_session", { sessionId });
+    },
+    // 手动档（P17 D4/D5）：方法体引用的是上方同名局部闭包（对象方法名不入词法
+    // 作用域，无递归风险）。startSegment/stopSegment 闭包自带 rec.active 幂等守卫。
+    async startSegment() {
+      await startSegment();
+    },
+    async stopSegment() {
+      // 手动停段是宿主策略边界：不补 hidden lifecycle（D5）
+      await stopSegment(false);
+    },
+    signal(plugin: SignalPlugin, payload: unknown) {
+      rec.signal(plugin, payload);
     },
   };
 }

@@ -2,7 +2,7 @@
 
 `@prism-obs/observer-sdk` — embed in any web app, record DOM + diagnostic signals, report to the console.
 
-> **Applies to**: `@prism-obs/observer-sdk` **0.2.x**. This page is updated together with API changes.
+> **Applies to**: `@prism-obs/observer-sdk` **0.3.x**. This page is updated together with API changes.
 
 **In this page**: install the SDK → minimal integration → configure recording profiles / offline capture / redaction as needed. Prerequisite: the console is running (see [Quick Start](./quickstart)).
 
@@ -83,6 +83,13 @@ All three profiles throttle **interaction channels and minor nodes** only — **
 :::
 
 Want to see the difference? The repo sample [examples/web-demo](https://github.com/zxc125/prism/tree/main/examples/web-demo) takes URL params: `?sim=1` starts a market-data simulation, `?profile=minimal&block=.quote-table` applies a tuning config in one go.
+
+### High-frequency rendering
+
+Recording itself has a main-thread cost: rrweb's mutation serialization runs on the main thread and **no profile avoids it**. For hot-rendering pages (virtual-scroll tables, tick push, fast polling), two steps make it usable:
+
+1. **Block the row container, not just cells.** Virtualized lists mount/unmount whole rows while scrolling; blocking individual columns (say a price cell) doesn't stop row-level churn — put the row container into the blocked areas (e.g. `domBlocks: [".vtable .row"]`) so scroll-time mutations stop entering the stream frame by frame. Trade-off: those regions show placeholders in replay.
+2. **Keep segment boundaries out of the hot phase.** Tauri apps can use `gating: "manual"`: segments open on interaction and close when idle, so idle time costs nothing (see the [Tauri Plugin manual](./tauri#manual-segment-gating-p17)); each segment starts with a full snapshot, so try to open segments in interaction gaps rather than mid-render storms.
 
 ## Offline capture: `recordOffline()`
 
@@ -209,6 +216,7 @@ init({ appId: "my-app", endpoint: "http://127.0.0.1:1421" });
 | `init()` rejects / page shows "connection failed" | wrong endpoint or console down | confirm the console window is up and the address matches Settings; 401 = token mismatch |
 | Blank replay / invisible text | no explicit background color | see the [background color note](#the-observed-page-needs-an-explicit-background-color) |
 | Event volume / session size too big | high-frequency interactions or DOM re-renders | add `recording`; pair with `domBlocks` for hot DOM regions (see [recording](#recording)) |
+| Scrolling / page switching stutters while recording | main-thread mutation serialization cost | block the virtual-table row container + keep segment boundaries out of hot phases (see [high-frequency rendering](#high-frequency-rendering)) |
 | SSR build fails with `window is not defined` | `init()` called on the server | see the SSR warning above — move to a client lifecycle or add a guard |
 
 ## Full example

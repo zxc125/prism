@@ -2,7 +2,7 @@
 
 `tauri-plugin-observer`（Rust）+ `@prism-obs/observer-tauri`（JS）—— 给 Tauri 2 桌面应用装上**多窗口**录制协调，经 HTTP 上报到 console。
 
-> **适用版本**：`@prism-obs/observer-tauri` **0.2.x** / `tauri-plugin-observer` **0.1.x**。
+> **适用版本**：`@prism-obs/observer-tauri` **0.4.x** / `tauri-plugin-observer` **0.2.x**。
 
 **本页你将完成**：Rust 侧装插件 → JS 侧每个窗口调 `initTauri()` → capabilities 授权 → 多窗口跑通。前置：一个能跑的 Tauri 2 应用；console 已按 [快速开始](./quickstart) 跑通。
 
@@ -21,7 +21,7 @@ Rust 侧（`src-tauri/Cargo.toml`）：
 
 ```toml
 [dependencies]
-tauri-plugin-observer = "0.1"
+tauri-plugin-observer = "0.2"
 ```
 
 JS 侧：
@@ -125,9 +125,62 @@ await ctrl.stop();
 | `autoStart` | `boolean` | ➖ | — | **主窗口传 `true`**：启动会话（HttpSink.startSession + 插件 bind_session 广播）。**子窗口不传**：等待 `recording-session` 广播拿到 sessionId 后自启 |
 | `signals` | `SignalSet` | ➖ | `"all"` | 诊断信号开关，同 Web SDK |
 | `recording` | `RecordingOptions` | ➖ | — | 录制量控（三档 profile + domBlocks），同 [Web SDK](./web#录制量控-recording)；缺省 = 全量录制 |
+| `gating` | `"manual"` | ➖ | — | 手动档段门控（见[下节](#手动档段门控-p17)）：会话广播与挂载兜底不再自动开段，段边界由宿主经 controller 驱动；缺省 = 常录 |
 | `meta` | `object` | ➖ | — | 透传到 session meta 的额外字段 |
 
 机制：主窗口 `autoStart` 从 console server 取得 sessionId 后经插件 `bind_session` 广播；各窗口监听 `recording-session` / `segment` / `observer-lifecycle` 事件，驱动 `SegmentRecorder` 开 / 停段，经 `HttpSink` 上报。窗口隐藏 / 聚焦由 Rust 检测后 emit，前端转发上报。
+
+### 手动档段门控（P17）
+
+默认行为是**会话活跃即持续录制**。宿主想自己控制段边界（交互开段、空闲停段、异常兜底）时，加 `gating: "manual"`：`recording-session{active}` 广播与挂载兜底不再自动开段，段边界改由 controller 驱动；窗口复用/隐藏驱动的 `segment` 事件不受影响（复用显示仍开新段、隐藏仍停段）。
+
+controller 在 `stop()` / `listSessions()` / `exportSession()` 之外提供：
+
+| 成员 | 作用 |
+| --- | --- |
+| `active` | 段是否活跃（只读） |
+| `startSegment()` | 手动开段（幂等，段已活跃时早退） |
+| `stopSegment()` | 手动停段（幂等，不补 hidden 生命周期——那是窗口隐藏语义） |
+| `signal(plugin, payload)` | 注入 type:6 诊断信号进当前段流；段未活跃时丢弃 |
+
+最小门控策略（交互开段 + 30s 判闲停段 + 空闲异常兜底）：
+
+```ts
+const ctrl = await initTauri({
+  appId: "my-tauri-app",
+  endpoint: "http://127.0.0.1:1421",
+  autoStart: isMain,
+  gating: "manual",
+});
+
+let lastActiveAt = Date.now();
+window.addEventListener(
+  "pointerdown",
+  () => {
+    lastActiveAt = Date.now();
+    if (!ctrl.active) void ctrl.startSegment();
+  },
+  { capture: true, passive: true },
+);
+
+// 空闲期异常兜底：开段后注入（signal 段未活跃时丢弃；段内异常由信号 hook 捕获，勿重复注入）
+window.addEventListener("error", (ev) => {
+  if (ctrl.active) return;
+  void ctrl.startSegment().then(() =>
+    ctrl.signal("error", { message: ev.message, stack: ev.error?.stack }),
+  );
+});
+
+setInterval(() => {
+  if (ctrl.active && Date.now() - lastActiveAt > 30_000) void ctrl.stopSegment();
+}, 1_000);
+```
+
+完整可跑样例：[examples/tauri-demo](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) 的 `VITE_OBSERVER_GATING=manual`（判闲节拍与异常兜底全套）。
+
+::: tip 为什么需要门控
+`recording` 量控只控制「段开着时录什么」；**门控是空闲期零录制成本的唯一手段**（空闲期零观察、零序列化、零落盘）。高频渲染场景的完整打法见 [Web SDK 手册 · 高频渲染场景](./web#高频渲染场景)。
+:::
 
 ### 本地落盘（Local 模式，P16）
 
@@ -186,6 +239,7 @@ Tauri 2 的 capabilities 按**窗口 label**（或 glob）授权。任何窗口�
 | console 里根本没有会话出现 | 主窗口没传 `autoStart: true`，或 endpoint / token 不对 | 确认主窗口判定逻辑（上例按 hash 判定）；对照 console 设置页 |
 | 子窗口不录 | 子窗口没调 `initTauri()`，或 label 无权限 | 每个窗口的入口都要调；检查 capabilities |
 | 会话有了但窗口只有一条轨道 | 子窗口 label 与主窗口相同被单实例复用 | 不同 label = 不同轨道；检查 `window_label()` 推导 |
+| 录制开启后空闲期也有事件落盘 | 未配 `gating: "manual"`（缺省会话活跃即常录） | 见[手动档段门控](#手动档段门控-p17)；高频渲染另见 [Web SDK · 高频渲染场景](./web#高频渲染场景) |
 
 ## 完整示例
 

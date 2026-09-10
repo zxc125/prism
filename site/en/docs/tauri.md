@@ -2,7 +2,7 @@
 
 `tauri-plugin-observer` (Rust) + `@prism-obs/observer-tauri` (JS) — add **multi-window** recording coordination to a Tauri 2 desktop app, reporting to the console over HTTP.
 
-> **Applies to**: `@prism-obs/observer-tauri` **0.2.x** / `tauri-plugin-observer` **0.1.x**.
+> **Applies to**: `@prism-obs/observer-tauri` **0.4.x** / `tauri-plugin-observer` **0.2.x**.
 
 **In this page**: register the plugin on the Rust side → call `initTauri()` in every window → grant capabilities → run multi-window. Prerequisite: a working Tauri 2 app; the console running per [Quick Start](./quickstart).
 
@@ -21,7 +21,7 @@ Rust (`src-tauri/Cargo.toml`):
 
 ```toml
 [dependencies]
-tauri-plugin-observer = "0.1"
+tauri-plugin-observer = "0.2"
 ```
 
 JS:
@@ -126,9 +126,63 @@ await ctrl.stop();
 | `autoStart` | `boolean` | ➖ | — | **main window: `true`** — starts the session (HttpSink.startSession + plugin `bind_session` broadcast). **child windows: omit** — they self-start once the `recording-session` broadcast arrives |
 | `signals` | `SignalSet` | ➖ | `"all"` | signal switches, same as the Web SDK |
 | `recording` | `RecordingOptions` | ➖ | — | recording profile (three profiles + domBlocks), same as the [Web SDK](./web#recording); omitted = full recording |
+| `gating` | `"manual"` | ➖ | — | manual segment gating (see [below](#manual-segment-gating-p17)): the session broadcast and the mount fallback no longer auto-open segments — the host drives boundaries via the controller; default = record continuously |
 | `meta` | `object` | ➖ | — | extra fields forwarded into session meta |
 
 Mechanism: the main window's `autoStart` gets a sessionId from the console server and broadcasts it via the plugin's `bind_session`; every window listens for `recording-session` / `segment` / `observer-lifecycle` events to drive `SegmentRecorder` start/stop, reporting via `HttpSink`. Window hide/focus is detected by Rust and forwarded.
+
+### Manual segment gating (P17)
+
+The default behavior is **record continuously while the session is active**. If the host wants to own segment boundaries (open on interaction, stop when idle, exception fallback), pass `gating: "manual"`: the `recording-session{active}` broadcast and the mount fallback no longer auto-open segments — boundaries are driven through the controller instead. Window reuse/hide `segment` events are unaffected (re-show still opens a new segment, hide still stops).
+
+Beyond `stop()` / `listSessions()` / `exportSession()`, the controller exposes:
+
+| Member | Purpose |
+| --- | --- |
+| `active` | whether a segment is currently open (read-only) |
+| `startSegment()` | manually open a segment (idempotent, no-op when active) |
+| `stopSegment()` | manually close the segment (idempotent; does not report hidden — that's window-visibility semantics) |
+| `signal(plugin, payload)` | inject a type:6 diagnostic signal into the current stream; dropped when no segment is open |
+
+Minimal gating policy (open on interaction, stop after 30s idle, idle-exception fallback):
+
+```ts
+const ctrl = await initTauri({
+  appId: "my-tauri-app",
+  endpoint: "http://127.0.0.1:1421",
+  autoStart: isMain,
+  gating: "manual",
+});
+
+let lastActiveAt = Date.now();
+window.addEventListener(
+  "pointerdown",
+  () => {
+    lastActiveAt = Date.now();
+    if (!ctrl.active) void ctrl.startSegment();
+  },
+  { capture: true, passive: true },
+);
+
+// idle-exception fallback: open a segment, then inject (signal is dropped while no
+// segment is open; in-segment errors are already captured by the signal hooks)
+window.addEventListener("error", (ev) => {
+  if (ctrl.active) return;
+  void ctrl.startSegment().then(() =>
+    ctrl.signal("error", { message: ev.message, stack: ev.error?.stack }),
+  );
+});
+
+setInterval(() => {
+  if (ctrl.active && Date.now() - lastActiveAt > 30_000) void ctrl.stopSegment();
+}, 1_000);
+```
+
+A complete runnable sample: [`examples/tauri-demo`](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) with `VITE_OBSERVER_GATING=manual` (idle timer and exception fallback included).
+
+::: tip Why gating
+`recording` tuning only controls **what gets recorded while a segment is open**; gating is the only way to make idle time cost nothing (no observing, no serialization, no writes). For hot-rendering pages see the [Web SDK manual · High-frequency rendering](./web#high-frequency-rendering).
+:::
 
 ### Local disk (Local mode, P16)
 
@@ -187,6 +241,7 @@ New windows load `index.html` and locate their view via the hash (e.g. `index.ht
 | No session ever appears in the console | main window didn't pass `autoStart: true`, or endpoint/token wrong | verify the main-window detection (hash-based in the example); cross-check console Settings |
 | A child window doesn't record | `initTauri()` not called there, or label lacks permission | call it in every window's entry; check capabilities |
 | Session exists but only one lane | child window shares the main window's label and got reused | different label = different lane; check `window_label()` |
+| Events land on disk even while idle | `gating: "manual"` not set (default records while the session is active) | see [Manual segment gating](#manual-segment-gating-p17); for hot rendering also [Web SDK · High-frequency rendering](./web#high-frequency-rendering) |
 
 ## Full example
 

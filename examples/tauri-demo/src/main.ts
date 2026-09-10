@@ -6,6 +6,11 @@ import { initTauri, type TauriController } from "@prism-obs/observer-tauri";
 //（Rust 同读此变量切 Mode::Local，单一来源）；缺省 = Remote 上报 console。
 const LOCAL = import.meta.env.VITE_OBSERVER_MODE === "local";
 
+// 手动档门控开关（P17 D7）：`VITE_OBSERVER_GATING=manual pnpm tauri dev` 时，
+// `recording-session{active}` 广播与挂载兜底不再自动开段，段边界由下方
+// installGatingPolicy 的宿主策略（交互开段/判闲停段/空闲异常兜底）驱动；缺省常录。
+const GATING = import.meta.env.VITE_OBSERVER_GATING === "manual";
+
 // 上报目标可热切：localStorage 持久化 + 应用内配置 UI（默认本地 server，可切云端 observer-server）。
 const STORAGE_KEY = "observer-tauri-demo";
 const DEFAULT_ENDPOINT = "http://127.0.0.1:1421";
@@ -80,15 +85,19 @@ initTauri({
   env: "dev",
   release: "0.1.0",
   autoStart: isMain,
+  gating: GATING ? "manual" : undefined,
 })
   .then((ctrl: TauriController) => {
     dotEl.classList.add("on");
-    statusEl.textContent = isMain
-      ? LOCAL
-        ? "采集中 · 主窗口（本地落盘）"
-        : "采集中 · 主窗口"
-      : "采集中 · 子窗口";
+    statusEl.textContent = GATING
+      ? "手动档 · 等待交互开段（空闲异常自动兜底）"
+      : isMain
+        ? LOCAL
+          ? "采集中 · 主窗口（本地落盘）"
+          : "采集中 · 主窗口"
+        : "采集中 · 子窗口";
     (window as any).__ctrl = ctrl;
+    if (GATING) installGatingPolicy(ctrl);
   })
   .catch((e: unknown) => {
     dotEl.classList.add("err");
@@ -176,3 +185,54 @@ window.stopObs = () => {
   dotEl.classList.remove("on");
   statusEl.textContent = "已停止";
 };
+
+/**
+ * 手动档门控策略（P17，仅演示）：机制（controller.startSegment/stopSegment/signal/active）
+ * 由上游提供，策略留宿主——交互开段、30s 判闲停段、空闲期异常兜底注入。
+ * 生产宿主（bond/frontend）按自身产品语义实现，此函数不进包。
+ */
+function installGatingPolicy(ctrl: TauriController): void {
+  const IDLE_STOP_MS = 30_000;
+  let lastActiveAt = Date.now();
+  // 队列而非单值：空闲期连续多次 error 都不丢
+  let errorPending: unknown[] = [];
+
+  // 空闲异常兜底：开段后注入（signal 段未活跃时丢弃，须先 startSegment）
+  const flushPendingError = (): void => {
+    for (const payload of errorPending.splice(0)) ctrl.signal("error", payload);
+  };
+
+  const onInteraction = (): void => {
+    lastActiveAt = Date.now();
+    if (!ctrl.active) {
+      void ctrl.startSegment().then(() => {
+        statusEl.textContent = "手动档 · 采集中（交互驱动）";
+        flushPendingError();
+      });
+    }
+  };
+  for (const type of ["pointerdown", "keydown", "wheel", "touchstart"] as const) {
+    window.addEventListener(type, onInteraction, { capture: true, passive: true });
+  }
+
+  // 段活跃时信号 hook 已捕获 error，这里只兜底空闲期异常
+  window.addEventListener("error", (ev) => {
+    if (ctrl.active) return;
+    errorPending.push({
+      message: ev.message,
+      source: ev.filename,
+      lineno: ev.lineno,
+      stack: ev.error?.stack,
+      kind: "onerror",
+    });
+    void ctrl.startSegment().then(flushPendingError);
+  });
+
+  // 判闲节拍：空闲超阈值停段，下次交互开新段（每段以全量快照开头，可独立回放）
+  window.setInterval(() => {
+    if (ctrl.active && Date.now() - lastActiveAt > IDLE_STOP_MS) {
+      void ctrl.stopSegment();
+      statusEl.textContent = "手动档 · 段空闲（交互续录）";
+    }
+  }, 1_000);
+}

@@ -1,7 +1,13 @@
 import { record } from "rrweb";
-import { installSignalHooks } from "./signals";
+import { emitSignal, installSignalHooks } from "./signals";
 import { resolveRecordOptions } from "./recording-profile";
-import type { RecordingOptions, RREvent, SignalSet, Sink } from "./types";
+import type {
+  RecordingOptions,
+  RREvent,
+  SignalPlugin,
+  SignalSet,
+  Sink,
+} from "./types";
 
 export interface SegmentRecorderOptions {
   sink: Sink;
@@ -25,6 +31,8 @@ export class SegmentRecorder {
   private stopFn: (() => void) | null = null;
   private stopHooks: (() => void) | null = null;
   private buffer: RREvent[] = [];
+  /** 在途 flush（P17 D2）：非 null 表示有一批 appendEvents 未完成，新事件留在 buffer 并入下一批。 */
+  private flushing: Promise<void> | null = null;
   private flushTimer: number | null = null;
   private segStart = 0;
   private destroyed = false;
@@ -83,8 +91,27 @@ export class SegmentRecorder {
       this.stopFn();
       this.stopFn = null;
     }
+    // 先等在途批完成（P17 D2）：在途批在 flush 起点已抓取段 id、归属当前段；
+    // 不等则两批并发 invoke，async 化后的 append_events 到达序不再保证
+    if (this.flushing) {
+      try {
+        await this.flushing;
+      } catch {
+        // flush() 内已记日志
+      }
+    }
     await this.flush();
     this.segmentId = null;
+  }
+
+  /**
+   * 注入 type:6 诊断信号进当前段流（P17 D1）：与 installSignalHooks 的产出同构
+   * （同一条 emit buffer、共享时间轴）。段未活跃时丢弃——宿主门控的「空闲异常兜底」
+   * 应先 startSegment() 再 signal()。
+   */
+  signal(plugin: SignalPlugin, payload: unknown): void {
+    if (this.segmentId == null) return;
+    emitSignal((e) => this.buffer.push(e), this.segStart, plugin, payload);
   }
 
   /**
@@ -107,11 +134,24 @@ export class SegmentRecorder {
   }
 
   async flush(): Promise<void> {
-    if (!this.segmentId || this.buffer.length === 0) return;
+    // 串行化（P17 D2）：在途批未完成时早退，buffer 里的新事件并入下一批（调用方
+    // 不能把「await flush() 返回」理解为「已送达」——在途时本调用只入队等待）；
+    // 因此批次 N+1 的 invoke 发生在批次 N 响应之后，到达序 = 发送序——
+    // Sink 侧（TauriSink -> async 命令）即使脱离主线程执行也不会乱序
+    if (this.flushing || !this.segmentId || this.buffer.length === 0) return;
     const events = this.buffer;
     this.buffer = [];
+    const segmentId = this.segmentId;
     try {
-      await this.opts.sink.appendEvents(this.segmentId, events);
+      // Promise.resolve 包一层：同步抛异常的自定义 Sink 也走 catch（与 P17 前语义一致），
+      // 不让定时器路径（void this.flush()）变成 unhandled rejection
+      const pending = Promise.resolve(
+        this.opts.sink.appendEvents(segmentId, events),
+      );
+      this.flushing = pending.finally(() => {
+        this.flushing = null;
+      });
+      await this.flushing;
     } catch (e) {
       console.error("[recorder] append_events failed", e);
     }

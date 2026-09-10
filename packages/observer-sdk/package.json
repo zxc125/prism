@@ -1,6 +1,6 @@
 {
   "name": "@prism-obs/observer-sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "本地优先前端观测平台 · Web 采集 SDK",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,7 +17,8 @@
   "scripts": {
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "pnpm typecheck && pnpm build"
+    "test": "vitest run",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
   },
   "keywords": [
     "rrweb",
@@ -49,6 +50,7 @@
     "rrweb": "^2.1.0",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
-    "vite-plugin-dts": "^4"
+    "vite-plugin-dts": "^4",
+    "vitest": "^5.0.0"
   }
 }

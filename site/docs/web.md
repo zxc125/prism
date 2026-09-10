@@ -2,7 +2,7 @@
 
 `@prism-obs/observer-sdk` —— 嵌入任意 Web 应用，录制 DOM + 诊断信号，上报到 console。
 
-> **适用版本**：`@prism-obs/observer-sdk` **0.2.x**。API 有变更时本页会同步更新并改此标注。
+> **适用版本**：`@prism-obs/observer-sdk` **0.3.x**。API 有变更时本页会同步更新并改此标注。
 
 **本页你将完成**：安装 SDK → 最小接入跑通 → 按需配置录制量控 / 离线采集 / 脱敏。前置：已按 [快速开始](./quickstart) 跑通 console。
 
@@ -83,6 +83,13 @@ init({
 :::
 
 想直观对比三档差异？仓库示例 [examples/web-demo](https://github.com/zxc125/prism/tree/main/examples/web-demo) 支持 URL 参数：`?sim=1` 启动行情模拟，`?profile=minimal&block=.quote-table` 一键套用量控配置。
+
+### 高频渲染场景
+
+录制本身有主线程成本：rrweb 的 mutation 序列化跑在主线程，**任何档位都绕不开**。高频渲染页（虚拟滚动表格、行情推送、秒级轮询）按两步把成本压到可用：
+
+1. **免录区罩住「行容器」，不只是单元格**。虚拟滚动列表滚动时整行挂载/卸载，只挡个别列（如价格 cell）挡不住行级增删——把行容器纳入免录区（如 `domBlocks: [".vtable .row"]`），滚动期的 mutation 才不会逐帧进流。代价是回放中这些区域显示占位块。
+2. **让段边界避开高频期**。Tauri 应用可配 `gating: "manual"` 手动档：交互开段、空闲停段，空闲期零录制成本（见 [Tauri Plugin 手册](./tauri#手动档段门控-p17)）；开段头部是一次全量快照，尽量让开段时机落在交互间隙而非渲染洪峰中。
 
 ## 离线采集：`recordOffline()`
 
@@ -209,6 +216,7 @@ init({ appId: "my-app", endpoint: "http://127.0.0.1:1421" });
 | `init()` 报错 / 页面显示连接失败 | endpoint 不对或 console 没在跑 | 确认 console 主窗口开着、地址端口与设置页一致；401 = token 不匹配 |
 | 回放画面空白 / 文字看不见 | 页面没显式设置背景色 | 见上文[背景色须知](#被观测页需显式设置背景色) |
 | 事件量 / 会话体积太大 | 高频交互或高频 DOM 渲染 | 上 `recording` 量控；高频 DOM 场景配 `domBlocks`（见[录制量控](#录制量控-recording)） |
+| 录制开启后滚动 / 切页卡顿 | mutation 序列化的主线程成本 | 免录区罩住虚拟表行容器 + 段边界避开高频期（见[高频渲染场景](#高频渲染场景)） |
 | SSR 构建报 `window is not defined` | `init()` 在服务端被调用 | 见上文 SSR 警示，挪到客户端生命周期或加守卫 |
 
 ## 完整示例

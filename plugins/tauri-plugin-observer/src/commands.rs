@@ -224,7 +224,15 @@ pub fn begin_segment<R: Runtime>(
 }
 
 /// Local 模式：追加事件到 segment 文件。Remote 模式 no-op（前端走 HttpSink）。
-#[tauri::command]
+///
+/// `(async)`（P17 D3）：非 async 命令默认执行在主线程（macOS = NSApplication 事件
+/// 循环线程），加 `(async)` 后 serde 反序列化 + 写盘脱离主线程，不再阻塞全进程窗口
+/// 事件循环。保序论证：① 同窗口——SDK flush 串行化（observer-sdk SegmentRecorder）
+/// 保证同一 recorder 至多一个在途 invoke，下一批发送在前一批响应之后，到达序 = 发送序；
+/// ② 跨窗口——segmentId 不同即文件不同，`append(true)` 只保单文件完整性且互不交叉；
+/// ③ begin/append 无竞态——`rec.start()` await `begin_segment` 之后才启动 rrweb 与
+/// flush 定时器。命令名不变，`observer:default` 权限与 `generate_handler![]` 注册零改动。
+#[tauri::command(async)]
 pub fn append_events(
     state: State<'_, SessionState>,
     segment_id: String,

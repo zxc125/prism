@@ -55,7 +55,7 @@ recordings/<sessionId>/
 - **稳定槽位 + spotlight 主窗口**：回放时每个 label 占一个固定网格槽位（不随 show/hide reflow）；主窗口由 focus 时间线自动跟踪或手动选择，占大格，其余为侧槽。主槽/侧槽切换只改 CSS class（`is-main` + `grid-row:1/-1`），**不 reparent** Replayer 容器--rrweb 用 iframe 承载 mirror，reparent 会触发重新加载。
 - **动态 tile 元素不可用 scoped CSS**：`usePlayer` 用 `document.createElement` 创建 `.tile-slot/.tile-header/.tile-root/.tile-placeholder`，不带 scoped 的 `data-v` 属性，`<style scoped>` 选择器全部失配（曾导致 spotlight 不跨行 + 横向溢出）。相关规则放 PlayerView 的非 scoped `<style>` 块（以 `.grid` 限定作用域），并配 `min-width:0` + `minmax(0,...)` 列模板防 rrweb 原始宽度撑爆网格。
 - **tile 等比缩放（方案 E）**：`.replayer-wrapper` 固定为录制视口尺寸（Meta 事件的 width/height），`transform: translate() scale()` fit-contain 到 `.tile-root` 并居中、`transform-origin: top left`；`ResizeObserver` 监听各 tile-root，spotlight 切主 / 窗口缩放 / 段显隐时重算。
-- **漂移阈值纠偏**：各 Replayer 独立 RAF 与主时钟（`setInterval(50)` + `performance.now()`）可能漂移；`tick` 内读 `replayer.getCurrentTime()` 与期望值对比，超 `DRIFT_THRESHOLD`(120ms) 则 `replayer.play(expect)` re-seek 拉回。rrweb 2.x `play(offset)` 内部先 PAUSE 再 PLAY(offset)，seek+续播一次完成。
+- **同步策略（P19 重写，原「漂移阈值纠偏/方案 B」已废弃）**：播放中**不做**任何纠偏——rrweb 的 `play(offset)` 在非 paused 态会先 PAUSE 再 PLAY，等于一次 O(段首→offset) 的全量同步重放，阈值纠偏在大会话上构成「越纠越卡」的正反馈（实测全片 11,165 tick 触发 11.6 万次 `play()`，废弃后仅 27 次=每段激活一次）。对齐只发生在四个时点：段激活 / 用户 seek / 暂停 / 切倍速，段边界是天然同步点。`activeAt()` **必须按 label 去重**（每 label 至多取 `shownAt` 最大的一段）——缺 `hidden` 事件的会话（外部导入常见）下不去重会让 tick 把全部历史段当「新激活」。「方案 A 主时钟步进」（每帧 `pause(offset)`）已证伪：rrweb 2.1.1 上每帧一次全量 cast，比纠偏更糟。侧槽允许有界漂移，只保证 spotlight 主窗口精确。
 - **focus 时间线**：`windows.jsonl` 的 focus 事件驱动自动主窗口；`start_session` 时补记初始 focus（遍历 `webview_windows().is_focused()`），避免 t=0 时间线为空；player-* 窗口的 focus 已过滤，不产生孤儿记录。
 - **交错诊断信号（type:6）**：error/console/network 信号以 rrweb plugin 事件（`type:6`，`data:{plugin,payload}`）交错进同一段事件流，与 DOM 共享绝对时间戳，无需跨流对齐。采集侧 `useRecorder` 在段录制期间安装 hook（error: `onerror`+`unhandledrejection`；console: patch log/warn/error/info/debug + args 序列化截断循环引用；network: patch `fetch`+`XMLHttpRequest`，默认不记 body/headers），经同一 `emit` 落盘，并带 `delay` 供 Replayer 调度安全。回放侧 `usePlayer` 从各 segment 收集 type:6 为统一信号流 + error 红标；rrweb Replayer 对无 handler 的 plugin 事件 no-op，不影响 DOM 回放。
 - **Sink 传输抽象（P3）+ Web SDK（P4）**：采集逻辑（rrweb record + 信号 hook + 缓冲 flush）与落盘/上报解耦，经 `Sink` 接口（`startSession`/`beginSegment`/`appendEvents`/`appendLifecycle`/`endSession`/`isRecordingActive`）对接不同后端。采集核心（`Sink` 接口、`HttpSink`/`IndexedDBSink`、信号 hook、`SegmentRecorder`）下沉到 npm 包 [`packages/observer-sdk`](packages/observer-sdk)（`@prism-obs/observer-sdk`），self-obs 与外部 SDK 共用同一份 `SegmentRecorder`：差别仅在 Sink 注入与驱动方式。`TauriSink`（进程内 invoke，零序列化；P16 起下沉到 [`packages/observer-tauri`](packages/observer-tauri) 的 `src/sink.ts`，console [sink.ts](src/composables/sink.ts) re-export）；`HttpSink`（外部 SDK 上报 console 本地 HTTP server，按 segment 缓冲/达量或定时 flush/失败重试/`beforeunload` 用 `sendBeacon` 兜底）已对接 P4 的 `/ingest/*` server；`IndexedDBSink`（纯 web 独立回放，IDB 缓存）仍为预留骨架。`useRecorder(sink = new TauriSink())` 默认 TauriSink；外部 web 应用 `init({appId, endpoint, token, ...})` 自驱。会话级命令在 self-obs 由 Rust/MainView 驱动（useRecorder 不调 startSession/endSession），外部 SDK 用完整接口。
@@ -72,7 +72,7 @@ recordings/<sessionId>/
 | [examples/tauri-demo](examples/tauri-demo) | P5 验证样例：独立 Tauri 2 应用装插件 Remote 模式，多窗口（main + child-*），`initTauri` 上报到 console |
 | [src/composables/sink.ts](src/composables/sink.ts) | 从 observer-tauri re-export `TauriSink`（P16 起实现在包内 `src/sink.ts`）；从 observer-sdk re-export `Sink`/`HttpSink`/`IndexedDBSink` 及类型 |
 | [src/composables/useRecorder.ts](src/composables/useRecorder.ts) | 每窗口录制器：监听会话广播与段事件、`player-*` 跳过；用 SDK 的 `SegmentRecorder`（注入 `TauriSink`）驱动 start/stop，无直接 `invoke` |
-| [src/composables/usePlayer.ts](src/composables/usePlayer.ts) | 回放控制器：加载会话、按区间驱动各 `Replayer`、play/pause/seek/倍速、稳定槽位、spotlight 主窗口（auto focus + 手动）、漂移纠偏、时间轴色带数据、tile 等比缩放（`fitSegment` + `ResizeObserver`）；从 type:6 事件收集诊断信号流（`signals`/`errorMarks`）；导出 `LANE_COLORS` 与 `Signal` 类型并为每个槽位标 `--lane-color` |
+| [src/composables/usePlayer.ts](src/composables/usePlayer.ts) | 回放控制器（P19 重写）：`readSessionMeta` 首屏只取元信息+段索引（14.8KB 级），段事件经 `readSegment` 按需拉（预取窗口 3s）+ 懒建/回收 Replayer（`MAX_LIVE_SEGMENTS=6`，计数式淘汰）；play/pause/seek（拖动只预览、`commitPreview` 松手提交）/倍速、稳定槽位、spotlight 主窗口（auto focus + 手动）、时间轴色带数据、tile 等比缩放（`fitSegment` + `ResizeObserver`）；**无播放中纠偏**（见同步策略）；诊断信号走全库 `readSessionSignals`（不依赖段是否已加载）；导出 `LANE_COLORS`/`Signal`/`displayTime`（拖动预览态单一事实源） |
 | [src/App.vue](src/App.vue) | 挂载 `useRecorder`，使每个窗口都参与录制 |
 | [src/styles/theme.css](src/styles/theme.css) | 全局设计系统：warm-dark 控制台色板（琥珀 `--amber` / 牛血 `--oxblood` / 等宽时间码 `--font-mono`）、来源色（`--src-self/web/tauri`，复用 lane 调色板）、诊断信号类型色（`--sig-*`）、Element Plus 全量深色变量覆写（`:root:root` 提权） |
 | [src/views/MainView.vue](src/views/MainView.vue) | 会话观测台：源监控机架（本机通道承袭 REC 脉冲 DNA、web 通道按 server 监听状态点亮 + 显示接入点与 web 会话数、tauri 待接入）+ 会话浏览器（来源过滤 chip/搜索 ID·名称/富行/回放，来源取 session.json 的 `source` 字段）；P6 加元信息编辑弹窗（name/note/tags）、导出（Blob 下载 `.rrweb-session.json`）、导入（file input）、会话行显示名称 + 导入标记 |
@@ -83,7 +83,7 @@ recordings/<sessionId>/
 ### Rust 命令清单
 
 分两类：
-- **console 自有命令**（[src-tauri/src/lib.rs](src-tauri/src/lib.rs) `generate_handler![]`，无需 capabilities 授权）：`greet`、`open_window`、`list_sessions`、`read_session`、`delete_session`、`list_annotations`、`save_annotations`、`update_session_meta`、`export_session`、`import_session`、`get_ingest_config`、`set_ingest_config`。
+- **console 自有命令**（[src-tauri/src/lib.rs](src-tauri/src/lib.rs) `generate_handler![]`，无需 capabilities 授权）：`greet`、`open_window`、`list_sessions`、`read_session`、`read_session_meta`/`read_segment`/`read_session_signals`（P19 分段读，均 async + spawn_blocking）、`delete_session`、`list_annotations`、`save_annotations`、`update_session_meta`、`export_session`、`import_session`、`import_session_path`、`read_text_file`、`get_ingest_config`、`set_ingest_config`。
 - **插件命令**（`tauri-plugin-observer` `Builder::invoke_handler`，注册为 `plugin:observer|*`，需 `observer:default` 权限）：`start_session`、`stop_session`、`is_recording_active`、`begin_segment`、`append_events`、`bind_session`（Remote：绑定 server sessionId 并广播）、`session_id`（Remote：子窗口取 sessionId）、`notify_segment_start`（窗口复用 emit segment:start）、`list_sessions`/`export_session`（P16：Local 限定只读，列会话/导出 bundle）。
 
 `listen` 由 `core:default` 允许。`TauriSink` 包装 `plugin:observer|begin_segment`/`append_events`/`is_recording_active`（及 startSession/endSession 对应 `plugin:observer|start_session`/`stop_session`）。`get/set_ingest_config` 读写 `IngestState`（`enabled`/`port`/`token`，持久化到 `appDataDir/ingest-config.json`）。
@@ -101,7 +101,7 @@ recordings/<sessionId>/
 - spotlight 主窗口：focus 时间线自动跟踪 + 手动点击选主 + 自动跟随开关；主槽占大格、侧槽堆叠，CSS 切换不 reparent。
 - 时间轴色带：主进度条上方叠加每窗口活跃区间色带 + focus 切换标记 + playhead，支持点击 seek。
 - tile 等比缩放（方案 E）：`.replayer-wrapper` 固定为录制视口尺寸（Meta 事件的 width/height），`transform: scale()` fit-contain 到 tile-root 并居中；spotlight 切主 / 窗口缩放 / 段显隐由 `ResizeObserver` 自动重算。
-- 漂移阈值纠偏：各 Replayer 与主时钟偏差超 120ms 时 re-seek 对齐。
+- 漂移阈值纠偏（P19 已废弃）：播放中不再做任何 re-seek——rrweb `play(offset)` 在非 paused 态是一次全量重放，纠偏在大会话上是正反馈。对齐只发生在段激活 / seek / 暂停 / 切倍速四个时点。
 - focus 数据补强：会话开始补记初始 focus、过滤 player-* focus 事件。
 - 诊断信号采集（P2）：error/console/network hook 在段录制期间 emit `type:6` 交错事件，与 DOM 同流落盘；console args 序列化（截断循环引用、Node/Error 转结构），network 默认不记 body/headers。
 - 诊断信号流回放（P1+P2）：PlayerView 统一信号流（console/network/error 混排 + 过滤），随播放头高亮、点击 seek；时间轴叠加 error 红标；诊断栏可折叠。
@@ -112,6 +112,7 @@ recordings/<sessionId>/
 - 导出/标注/分享（P6）：标注存 session 级 `annotations.jsonl`（`{ id, t, label?, text, author, createdAt }`）与 segment 事件流分离，回放时与 signals 共享相对会话起点时间轴。console 新增 `list_annotations`/`save_annotations`/`update_session_meta`/`export_session`/`import_session` 命令（核心逻辑抽纯函数 `build_export_bundle`/`write_import_bundle`/`merge_session_meta`，可测）；[`useAnnotations`](../../src/composables/useAnnotations.ts) 持有完整列表、增删改后立即整体覆写。PlayerView 诊断栏加「信号/标注」tab + 时间轴骨白圆点标记；MainView 会话行加编辑/导出 + 顶部导入 + 元信息弹窗。导出为单文件 JSON bundle（`format: prism-session`）零新依赖，导入分配新 id 重建目录、标记 `importedAt`。
 - 录制事件量控（P14）：`SegmentRecorder` 支持 `recording` 配置（`RecordProfile` 三档 full/balanced/minimal + `domBlocks` 免录区 → rrweb `blockSelector`），[recording-profile.ts](../../packages/observer-sdk/src/recording-profile.ts) 纯函数组装、full 档零 diff；`configure()` 支持下段生效（useRecorder 每次开段前从 localStorage 刷新）。console 设置页 CaptureTab 录制档位 UI + 采集信号三开关接线（[captureSettings.ts](../../src/composables/captureSettings.ts)）。sampling 管不到 mutation——高频 DOM 渲染场景靠 domBlocks（决策见 `docs/决策/录制事件量控.md`）。
 - 外部应用本地落盘（P16）：Local 模式泛化给外部宿主——插件 `ObserverConfig` 增 `source`/`appId`（session.json 元数据可配，appId None 省键）+ Local 限定 `list_sessions`/`export_session` 只读命令（导出 prism-session bundle 闭环回 console 导入）；JS 侧 `initTauri({ mode })` 双模式驱动 + `TauriSink` 下沉进 `@prism-obs/observer-tauri`；tauri-demo 双模式开关（`VITE_OBSERVER_MODE`）。决策见 [docs/决策/外部应用本地落盘.md](../../docs/决策/外部应用本地落盘.md)。
+- 大文件回放性能（P19）：读路径分段化——`read_session_meta`（元信息+段索引，实测 172MB 会话首屏 **14,858 字节 / 31ms**，旧全量路径 180MB）、`read_segment`（jsonl 直拼 + raw IPC，零 `serde Value` 中间树）、`read_session_signals`（全库 type:6 廉价路径，1.95MB/97ms）；回放按需加载——懒建/回收 Replayer（`MAX_LIVE_SEGMENTS=6`）、预取窗口 3s、`activeAt` 按 label 去重、拖动预览/松手提交、信号流虚拟滚动、废弃播放中纠偏。两轮 fresh subagent 独立复核：全片 `play()` 116,069 → **27**。见 [P19](../../docs/阶段路径/P19-大文件回放性能.md)。
 
 ### 编译验证
 
@@ -134,7 +135,7 @@ recordings/<sessionId>/
 
 仍待实测确认：
 
-- 漂移纠偏的实际收敛效果、`play(offset)` 在长事件流上 re-seek 的延迟。
+- ~~漂移纠偏的实际收敛效果~~（P19 已废弃纠偏）；新增待实测：P19 懒加载/回收/预览态 seek 的运行时手感（步骤见 docs/测试/P19-测试流程.md 场景 2-5）。
 - 录制中关闭子窗口的拦截时序、`emit_to` 定向事件是否被目标窗口稳定接收。
 - HttpSink 已对接 P4 本地 server（端到端 E2E 仍待跑：web demo 上报 -> console 列表 -> 回放）；IndexedDBSink 独立回放读取路径仍待补。
 - P5 E2E 仍待跑：`examples/tauri-demo` 装插件 Remote 模式 -> console 列表出现 `source:"tauri"` 会话 -> 多窗口对齐回放正确；Remote 模式窗口关闭=隐藏（非主窗口）的拦截时序、`bind_session` 跨窗口 sessionId 广播、hidden/focus 经 HttpSink 上报是否齐全。
@@ -143,7 +144,7 @@ recordings/<sessionId>/
 
 ### 已知 MVP 限制
 
-- 回放各 segment 仍各自跑独立 RAF，靠 120ms 阈值纠偏拉回（有界，非零漂移）；彻底零漂移需主时钟步进（方案 A，未做）。
+- 回放各 segment 仍各自跑独立 RAF，播放中**无纠偏**（P19 废弃——纠偏=全量重放）：漂移有界但持续累积，段边界 / seek / 暂停时重对齐；侧槽允许漂移，只保证 spotlight 主窗口精确。「方案 A 主时钟步进」已证伪（rrweb 2.1.1 上每帧 `pause(offset)` = 每帧一次全量 cast）。
 - 回放布局为稳定槽位 + spotlight，但**未还原原始窗口位置/尺寸**（方案 C，未做）。
 - 录制中关闭主窗口=直接退出，session.json 无 endedAt（不影响回放，但列表时长显示会以「现在」估算）。
 - 诊断信号 body/headers 默认关（PII）；P14 起采集信号三开关（error/console/network）已接线（localStorage → `signals`，下段生效），「请求体」开关未实现。
@@ -155,7 +156,8 @@ recordings/<sessionId>/
 
 1. **运行时测试与修 bug**：基本流程（开始录制 -> 开关子窗口 -> 停止 -> 回放）+ spotlight + 等比缩放 + P1/P2/P3 已实测通过；P4/P5/P6 的 E2E 仍待跑（见「运行时实测」）。
 2. **位置精确回放（方案 C）**：录制时记窗口 x/y/w/h（`outer_position`/`outer_size`），回放按包围盒缩放 fit 视口、按原位置摆放，还原多窗口空间关系。
-3. **无漂移同步（方案 A）**：主 RAF 循环每帧 `replayer.pause(offset)` 步进驱动各 segment，取代独立 `play`，彻底零漂移。当前已落地阈值纠偏（方案 B，120ms re-seek），A 为可选增强。
+3. **~~无漂移同步（方案 A）~~（P19 证伪）**：rrweb 2.1.1 的 `pause(offset)` 内部是 `play(offset)`+`PAUSE`，每帧步进 = 每帧一次全量 cast，不可行。现行策略：无播放中纠偏，四时点对齐（段激活/seek/暂停/倍速），侧槽允许有界漂移。
+4. **录制周期快照（`checkoutEveryNms`，P19 Phase D 延后）**：rrweb 2.1.1 该项**无默认值**、本项目未设 → 每段仅段首一份全量快照，seek 成本上界=整段增量。开启可把上界压到 ≤checkout 间隔，代价是体积上升（实测样本快照 ≈1.6MB/份）。采纳门：同一场景对照录制、体积增幅 ≤30% 才上；`full` 档零 diff 红线不变。
 4. **进度条精度与性能**：当前 50ms tick 更新 `currentTime`，长录制下可考虑节流或换 `requestAnimationFrame`。
 5. **标注增强**：inline 编辑文本、多作者区分（当前 author 固定 "local"）、标注关联具体窗口的视觉区分。
 

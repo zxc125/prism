@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 任务 | 命令 |
 | --- | --- |
-| 仅启动前端 dev 服务器（端口 1420） | `pnpm dev` |
+| 仅启动前端 dev 服务器（端口 1520） | `pnpm dev` |
 | 类型检查 + 构建前端到 `dist/` | `pnpm build` |
 | 以开发模式运行完整 Tauri 桌面应用 | `pnpm tauri dev`（自动执行 `pnpm dev`） |
 | 构建可安装的桌面安装包 | `pnpm tauri build`（自动执行 `pnpm build`） |
@@ -26,9 +26,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. **闭环到回放+诊断** - 不做告警/生产 RUM；诊断 = 回放带 error/console/network 上下文 + 导出/标注/分享。
 4. **交错事件模型** - error/console/network 以 rrweb plugin 事件（`type:6`）交错进同一条事件流，与 DOM 共享时间轴。
 
-阶段路径：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享 -> P7 离线采集与 bundle 契约 -> P8 云端 server 抽取 -> P9 多租户与运营加固 -> P10 console 2.0 重设计 + 浏览器化 -> P11 官网与品牌 -> P12 官网 i18n -> P13 官网文档站 -> P14 录制事件量控 -> P15 手册小白化 -> P16 外部应用本地落盘 -> P17 段控制上收与性能加固 -> P18 导出to-file变体。各阶段实现细节见 [docs/阶段路径/](docs/阶段路径/)，架构方案见 [docs/架构/](docs/架构/)，品牌见 [docs/品牌/](docs/品牌/)。
+阶段路径：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享 -> P7 离线采集与 bundle 契约 -> P8 云端 server 抽取 -> P9 多租户与运营加固 -> P10 console 2.0 重设计 + 浏览器化 -> P11 官网与品牌 -> P12 官网 i18n -> P13 官网文档站 -> P14 录制事件量控 -> P15 手册小白化 -> P16 外部应用本地落盘 -> P17 段控制上收与性能加固 -> P18 导出to-file变体 -> P19 大文件回放性能。各阶段实现细节见 [docs/阶段路径/](docs/阶段路径/)，架构方案见 [docs/架构/](docs/架构/)，品牌见 [docs/品牌/](docs/品牌/)。
 
-**进度**：P1-P12 全部 ✅；P13 官网文档站 Phase 1 ✅（[方案](docs/架构/官网文档站（方案）.md) · [P13](docs/阶段路径/P13-官网文档站.md)）；P14 录制事件量控 🚧（A/B + 发版 + 实测 + 3.3 手册 ✅，余 2.3 手动对照，[P14](docs/阶段路径/P14-录制事件量控.md)）；P15 手册小白化 ✅（[P15](docs/阶段路径/P15-手册小白化.md)，全链路 live run 留手动场景）；P16 外部应用本地落盘 ✅（[P16](docs/阶段路径/P16-外部应用本地落盘.md)，实测 + 发版 crates 0.2.0 / npm 0.3.0）；P17 段控制上收与性能加固 ✅（[P17](docs/阶段路径/P17-段控制上收与性能加固.md)，上游含发版 crates 0.2.1（+0910 补丁 0.2.2：`export_session` async 化）/ npm 0.3.0·0.4.0 + 下游对接验收完成 2026-09-10）；P18 导出 to-file 变体 ✅（[P18](docs/阶段路径/P18-导出to-file变体.md)，发版 crates 0.3.0 / npm 0.5.0，2026-09-10）。下表只列「是什么 + 1-2 个核心指针 + 验证状态」，实现细节归各阶段文档（零信息丢失，已逐一核对指针落在对应 P 文档内）。
+**进度**：P1-P12 全部 ✅；P13 官网文档站 Phase 1 ✅（[方案](docs/架构/官网文档站（方案）.md) · [P13](docs/阶段路径/P13-官网文档站.md)）；P14 录制事件量控 🚧（A/B + 发版 + 实测 + 3.3 手册 ✅，余 2.3 手动对照，[P14](docs/阶段路径/P14-录制事件量控.md)）；P15 手册小白化 ✅（[P15](docs/阶段路径/P15-手册小白化.md)，全链路 live run 留手动场景）；P16 外部应用本地落盘 ✅（[P16](docs/阶段路径/P16-外部应用本地落盘.md)，实测 + 发版 crates 0.2.0 / npm 0.3.0）；P17 段控制上收与性能加固 ✅（[P17](docs/阶段路径/P17-段控制上收与性能加固.md)，上游含发版 crates 0.2.1（+0910 补丁 0.2.2：`export_session` async 化）/ npm 0.3.0·0.4.0 + 下游对接验收完成 2026-09-10）；P18 导出 to-file 变体 ✅（[P18](docs/阶段路径/P18-导出to-file变体.md)，发版 crates 0.3.0 / npm 0.5.0，2026-09-10）；P19 大文件回放性能 🚧（[P19](docs/阶段路径/P19-大文件回放性能.md)，A/B/C 落地 + 两轮独立复核 2026-09-10，余运行时验收 + Phase D 延后）。下表只列「是什么 + 1-2 个核心指针 + 验证状态」，实现细节归各阶段文档（零信息丢失，已逐一核对指针落在对应 P 文档内）。
 
 | 阶段 | 主题 | 关键产出指针 | 验证 |
 | --- | --- | --- | --- |
@@ -50,6 +50,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | P16 | 外部应用本地落盘 | 插件 [commands.rs](plugins/tauri-plugin-observer/src/commands.rs) Local 限定 list/export 只读命令 + `ObserverConfig` source/appId · [observer-tauri](packages/observer-tauri) `initTauri(mode)` + TauriSink 下沉 · [方案](docs/架构/外部应用本地落盘（方案）.md) · [测试流程](docs/测试/P16-测试流程.md) | `cargo test` 5+22+31 全过 · subagent 契约复核 + 3.2 实测 ✅ · 发版 crates 0.2.0 + npm 0.3.0 |
 | P17 | 段控制上收与性能加固 | [segment-recorder.ts](packages/observer-sdk/src/segment-recorder.ts) `signal()` + flush 串行化 · [observer-tauri](packages/observer-tauri/src/index.ts) controller 手动档（`startSegment`/`stopSegment`/`signal`/`active` + `gating: "manual"`）· 插件 `append_events` async 化（脱主线程；`export_session` 同类遗漏由 0.2.2 补，含 console 自有命令）· [方案](docs/架构/段控制上收与性能加固（方案）.md) · [测试流程](docs/测试/P17-测试流程.md) | ✅ cargo test 5 + vitest 3 + console/site build ✅ + subagent 复核全过 · 发版 crates 0.2.1+0.2.2 + npm 0.3.0·0.4.0 · 下游对接验收完成 2026-09-10 |
 | P18 | 导出 to-file 变体 | 插件 `export_session_to_file`（async + spawn_blocking + `.tmp` 原子写，Local 限定）+ [observer-tauri](packages/observer-tauri/src/index.ts) `exportSessionToFile` · [方案](docs/架构/导出to-file变体（方案）.md) · [测试流程](docs/测试/P18-测试流程.md) | cargo test 8 + vitest 3 + console/site build ✅ + subagent 复核（1 阻断已修）· 发版 crates 0.3.0 + npm 0.5.0（2026-09-10）|
+| P19 | 大文件回放性能 | 读路径分段化（[bundle.rs](crates/observer-storage/src/bundle.rs) `read_session_meta`/`read_segment_json`/`read_session_signals_json` + raw IPC）+ 回放按需加载（[usePlayer.ts](src/composables/usePlayer.ts) 懒建/回收 Replayer、`activeAt` 按 label 去重、预览态 seek、信号流虚拟滚动、废弃播放中纠偏）· [方案](docs/架构/大文件回放性能（方案）.md) · [测试流程](docs/测试/P19-测试流程.md) | 🚧 A/B/C ✅ storage 33 + server 23+9 + vitest 3 + 两轮 subagent 复核（首轮 3 严重已修；172MB 首屏 14.8KB/31ms）· 余运行时验收，Phase D 延后 |
 
 ## 架构
 
@@ -76,7 +77,7 @@ recordings/<sessionId>/
 - **回放**：[PlayerShell](src/components/player/PlayerShell.vue)（路由 `/s/:id`，P10 起 in-app + 面包屑，不再开独立窗口）用底层 `Replayer`（rrweb-player 是 Vue 2，不能用）+ 自建 Element Plus 控制条，平铺显示当前活跃窗口。子组件 [ReplayGrid](src/components/player/ReplayGrid.vue)/[Timeline](src/components/player/Timeline.vue)/[DiagnosisPanel](src/components/player/DiagnosisPanel.vue) 通过 `provide/inject`（`PLAYER_CTX`）共享 usePlayer 实例。
 - **bundle 契约与离线采集**（P7）：会话可序列化为 `prism-session` bundle（`{ format, version, session, windows, segments, annotations }`），是跨进程/跨机迁移唯一契约（本地文件 / 本地 server / 云端上传 / 外部应用本地落盘导出四路共用），规范见 [bundle-规范.md](docs/架构/bundle-规范.md)。SDK `IndexedDBSink` + `recordOffline()` 支持脱离 console 离线录 -> 导出 bundle；`import_session`/`import_session_path` 校验 segmentId（`^[A-Za-z0-9_-]+#[0-9]+$`）防路径穿越 + 原子写（先 `.tmp` 再 rename）。
 - **存储层与 server 抽取 + Backend 抽象**（P8）：纯存储逻辑（落盘 + annotations + bundle 契约 + 读/列举/导入导出）抽到独立 crate [`crates/observer-storage`](crates/observer-storage)（零 tauri 依赖，全吃 `&Path`），[`tauri-plugin-observer::storage`](plugins/tauri-plugin-observer/src/storage.rs) 只留 `recordings_root` + re-export。HTTP server（ingest `/ingest/*` + 读 API `/sessions/*` + `POST /sessions/import`）抽到 [`crates/observer-server`](crates/observer-server)（`ObserverServer` + 独立二进制 `observer-server`，可绑 `0.0.0.0`）；console [ingest.rs](src-tauri/src/ingest.rs) 退化为绑 127.0.0.1 的薄封装，同一份代码。console 前端加 `Backend` 抽象（[backend.ts](src/composables/backend.ts)：`TauriBackend`=invoke / `HttpBackend`=HTTP），设置页切换，默认 Tauri；**录制 Sink 与 Backend 正交**。单租户 Bearer token 鉴权，多租户留 P9。P10 起：`GET /whoami` 暴露 tenant 上下文 + 配额余量（`QuotaTracker.usage` 读 AtomicU64）；`ServerConfig.web_dir` 启用后未命中 API 的请求 fallback 到静态文件（SPA 模式 + 路径穿越防护 + MIME 分派），`observer-server --web-dir <dir>` 单二进制零安装托管 console；浏览器模式 `getBackend()` 强制 HttpBackend + `UnconfiguredBackend` 占位（LoginGate 拦截）。
-- 新增的 Tauri command：console 自有命令（`greet`/`open_window`/`list_sessions`/`read_session`/`delete_session`/`list_annotations`/`save_annotations`/`update_session_meta`/`export_session`/`import_session`/`import_session_path`/`read_text_file`/`get_ingest_config`/`set_ingest_config`）注册在 [src-tauri/src/lib.rs](src-tauri/src/lib.rs) `generate_handler![]`，均为 observer-storage 薄封装，无需 capabilities 授权；插件命令（`plugin:observer|*`）注册在插件 `Builder::invoke_handler`，需 `observer:default` 权限。
+- 新增的 Tauri command：console 自有命令（`greet`/`open_window`/`list_sessions`/`read_session`/`read_session_meta`/`read_segment`/`read_session_signals`/`delete_session`/`list_annotations`/`save_annotations`/`update_session_meta`/`export_session`/`import_session`/`import_session_path`/`read_text_file`/`get_ingest_config`/`set_ingest_config`）注册在 [src-tauri/src/lib.rs](src-tauri/src/lib.rs) `generate_handler![]`，均为 observer-storage 薄封装，无需 capabilities 授权（P19 的三个分段读命令为 `async fn` + `spawn_blocking`，`read_segment`/`read_session_signals` 走 `tauri::ipc::Response` raw 字节）；插件命令（`plugin:observer|*`）注册在插件 `Builder::invoke_handler`，需 `observer:default` 权限。
 
 ### 多窗口系统（横跨前端 + 后端）
 
@@ -105,7 +106,7 @@ recordings/<sessionId>/
 
 ### 开发流程 harness
 
-本项目以「P 阶段」为开发单位（P1–P15 已落地，见进度表）。开发流已工具化为 7 个 slash commands + 4 份模板 + 2 个非阻断 hooks，完整方案见 [开发流harness（方案）](docs/架构/开发流harness（方案）.md)。
+本项目以「P 阶段」为开发单位（P1–P18 已落地，见进度表）。开发流已工具化为 7 个 slash commands + 4 份模板 + 2 个非阻断 hooks，完整方案见 [开发流harness（方案）](docs/架构/开发流harness（方案）.md)。
 
 **7 个命令入口**：
 
@@ -146,4 +147,4 @@ recordings/<sessionId>/
 ### 环境说明
 
 - [src-tauri/.cargo/config.toml](src-tauri/.cargo/config.toml) 将 crates.io 重定向到 **rsproxy.cn** 镜像（国内）。若 Rust 依赖拉取失败，问题/解法均在此镜像配置 - 无充分理由不要移除。
-- Vite 固定使用端口 1420 且 `strictPort: true`（Tauri 依赖此端口）；`src-tauri/**` 已被排除出 Vite 文件监听。
+- Vite 固定使用端口 1520 且 `strictPort: true`（Tauri 依赖此端口；1520 为避让 Tauri 生态默认 1420，多 Tauri 项目并行开发用）；`src-tauri/**` 已被排除出 Vite 文件监听。

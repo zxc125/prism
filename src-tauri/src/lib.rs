@@ -8,7 +8,7 @@ mod ingest;
 
 use observer_storage::{
     build_export_bundle, import_bundle_content, merge_session_meta, read_annotations,
-    write_annotations,
+    validate_session_id, write_annotations,
 };
 use tauri_plugin_observer::storage::recordings_root;
 
@@ -87,6 +87,58 @@ async fn read_session(app: AppHandle, id: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || observer_storage::read_session(&dir))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// 回放首屏：会话元信息 + 段索引（**不含段内事件**，O(段数) 读取）。P19 D1。
+/// 与 `read_session` 并存——后者保留给导出等既有消费者。
+#[tauri::command(async)]
+async fn read_session_meta(app: AppHandle, id: String) -> Result<Value, String> {
+    if !validate_session_id(&id) {
+        return Err(format!("invalid session id: {id}"));
+    }
+    let dir = recordings_root(&app).join(&id);
+    tauri::async_runtime::spawn_blocking(move || observer_storage::read_session_meta(&dir))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// 全库诊断信号（type:6）直拼 + raw IPC：诊断面板首屏拿完整信号流，不必等各段按需
+/// 加载；代价约为全量事件的 1%（只做子串筛选，不 parse）。
+#[tauri::command(async)]
+async fn read_session_signals(
+    app: AppHandle,
+    id: String,
+) -> Result<tauri::ipc::Response, String> {
+    if !validate_session_id(&id) {
+        return Err(format!("invalid session id: {id}"));
+    }
+    let dir = recordings_root(&app).join(&id);
+    let json: String = tauri::async_runtime::spawn_blocking(move || {
+        observer_storage::read_session_signals_json(&dir)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(json.into_bytes()))
+}
+
+/// 按需取单段事件：jsonl 直拼后以 **raw 字节**返回（P19 D2），JS 侧收 `ArrayBuffer` +
+/// `JSON.parse`。跳过 `serde_json::Value` 中间树与二次转义（大会话实测省 2.9GB 峰值 RSS）。
+#[tauri::command(async)]
+async fn read_segment(
+    app: AppHandle,
+    id: String,
+    segment_id: String,
+) -> Result<tauri::ipc::Response, String> {
+    if !validate_session_id(&id) {
+        return Err(format!("invalid session id: {id}"));
+    }
+    let dir = recordings_root(&app).join(&id);
+    let json: String = tauri::async_runtime::spawn_blocking(move || {
+        observer_storage::read_segment_json(&dir, &segment_id)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(json.into_bytes()))
 }
 
 #[tauri::command]
@@ -184,6 +236,9 @@ pub fn run() {
             open_window,
             list_sessions,
             read_session,
+            read_session_meta,
+            read_session_signals,
+            read_segment,
             delete_session,
             list_annotations,
             save_annotations,

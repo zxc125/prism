@@ -39,9 +39,15 @@ function onOverviewClick(e: MouseEvent) {
   player.seek(ratio * player.totalTime.value);
 }
 
-function onSlider(v: number | number[]) {
-  const ms = Array.isArray(v) ? v[0] : v;
-  player.seek(ms);
+/** 拖动中：只更新预览播放头（P19 D6）——不触碰 Replayer。 */
+function onPreview(v: number | number[]) {
+  player.preview(Array.isArray(v) ? v[0] : v);
+}
+
+/** 松手：提交 seek。先记预览值再提交，保证提交位置 = 松手位置。 */
+function onCommit(v: number | number[]) {
+  player.preview(Array.isArray(v) ? v[0] : v);
+  player.commitPreview();
 }
 </script>
 
@@ -78,7 +84,7 @@ function onSlider(v: number | number[]) {
       />
       <div
         class="tl-playhead"
-        :style="{ left: pct(player.currentTime.value) + '%' }"
+        :style="{ left: pct(player.displayTime.value) + '%' }"
       >
         <span class="tl-head" />
       </div>
@@ -88,10 +94,11 @@ function onSlider(v: number | number[]) {
       class="slider"
       :min="0"
       :max="player.totalTime.value"
-      :model-value="player.currentTime.value"
+      :model-value="player.displayTime.value"
       :step="100"
       :format-tooltip="fmt"
-      @input="onSlider"
+      @input="onPreview"
+      @change="onCommit"
     />
   </div>
 </template>

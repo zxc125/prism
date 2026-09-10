@@ -93,7 +93,7 @@ onMounted(async () => {
         <Timeline />
 
         <span class="timecode mono">
-          {{ fmt(player.currentTime.value) }}<span class="tc-sep">/</span>{{ fmt(player.totalTime.value) }}
+          {{ fmt(player.displayTime.value) }}<span class="tc-sep">/</span>{{ fmt(player.totalTime.value) }}
         </span>
 
         <el-select

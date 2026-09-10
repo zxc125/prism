@@ -110,7 +110,84 @@ pub fn segment_id_from_filename(name: &str) -> &str {
         .unwrap_or(name)
 }
 
-fn read_segment_text(path: &Path) -> Option<String> {
+/// 定位段文件：优先 `.jsonl.gz`，回退 `.jsonl`（与写侧扩展名一致）。
+pub fn segment_path(dir: &Path, segment_id: &str) -> Option<std::path::PathBuf> {
+    let seg_dir = dir.join("segments");
+    let gz = seg_dir.join(format!("{segment_id}.jsonl.gz"));
+    if gz.is_file() {
+        return Some(gz);
+    }
+    let plain = seg_dir.join(format!("{segment_id}.jsonl"));
+    if plain.is_file() {
+        return Some(plain);
+    }
+    None
+}
+
+/// 只读段文件首行（Meta 事件，含录制视口宽高）。
+///
+/// gz 感知且**不读入整段**：gz 段是「每批一个 member」的前缀可解压结构，
+/// 解压到第一个换行即停；据此构建段索引是 O(段数) 而非 O(事件数)。
+pub fn read_segment_first_line(path: &Path) -> Option<String> {
+    use std::io::BufRead;
+    let f = fs::File::open(path).ok()?;
+    let is_gz = path.extension().and_then(|e| e.to_str()) == Some("gz");
+    let mut reader: Box<dyn BufRead> = if is_gz {
+        Box::new(std::io::BufReader::new(MultiGzDecoder::new(f)))
+    } else {
+        Box::new(std::io::BufReader::new(f))
+    };
+    let mut line = String::new();
+    reader.read_line(&mut line).ok()?;
+    let t = line.trim();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
+/// 只读段文件**最后一个非空行**（尾事件的 timestamp 是会话结束时间的兜底依据，
+/// 见 [`crate::bundle::read_session_meta`] 的段索引）。
+///
+/// plain：从文件尾读窗口再扩大，O(1) 量级，不读全文；
+/// gz：gzip 无法逆序解压，只能解压全文取尾行（gz 落盘是 opt-in，量可控）。
+pub fn read_segment_last_line(path: &Path) -> Option<String> {
+    use std::io::{Seek, SeekFrom};
+    let is_gz = path.extension().and_then(|e| e.to_str()) == Some("gz");
+    if is_gz {
+        let text = read_segment_text(path)?;
+        return text
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .map(|l| l.trim().to_string());
+    }
+    let mut f = fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    let mut window: u64 = 1 << 20; // 1MB 起步
+    loop {
+        let start = len.saturating_sub(window);
+        f.seek(SeekFrom::Start(start)).ok()?;
+        let mut buf = Vec::with_capacity((len - start) as usize);
+        f.read_to_end(&mut buf).ok()?;
+        let text = String::from_utf8_lossy(&buf);
+        let mut parts: Vec<&str> = text.split('\n').collect();
+        // 窗口没盖到文件开头时，首段可能是半行——丢掉，必要时下一轮扩大窗口
+        if start > 0 && !parts.is_empty() {
+            parts.remove(0);
+        }
+        if let Some(last) = parts.iter().rev().find(|l| !l.trim().is_empty()) {
+            return Some(last.trim().to_string());
+        }
+        if start == 0 {
+            return None;
+        }
+        window *= 4;
+    }
+}
+
+pub(crate) fn read_segment_text(path: &Path) -> Option<String> {
     let is_gz = path.extension().and_then(|e| e.to_str()) == Some("gz");
     if is_gz {
         let f = fs::File::open(path).ok()?;

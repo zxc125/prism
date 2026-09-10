@@ -10,7 +10,10 @@ use std::path::Path;
 use serde_json::{json, Value};
 
 use crate::annotations::read_annotations;
-use crate::storage::{now_ms, read_segment_events, segment_id_from_filename};
+use crate::storage::{
+    now_ms, read_segment_events, read_segment_first_line, read_segment_last_line, read_segment_text,
+    segment_id_from_filename, segment_path,
+};
 
 /// bundle 契约标识与版本（与 TS 侧 buildBundle/parseBundle 对齐，见 docs/架构/bundle-规范.md）。
 pub const BUNDLE_FORMAT: &str = "prism-session";
@@ -62,9 +65,10 @@ pub fn read_session(dir: &Path) -> Result<Value, String> {
     )
     .map_err(|e| e.to_string())?;
 
+    // filter_map：单行损坏只跳过该行（与 read_session_meta / build_export_bundle 一致）
     let windows: Vec<Value> = fs::read_to_string(dir.join("windows.jsonl"))
         .ok()
-        .and_then(|s| s.lines().map(|l| serde_json::from_str(l).ok()).collect())
+        .map(|s| s.lines().filter_map(|l| serde_json::from_str(l).ok()).collect())
         .unwrap_or_default();
 
     let segments = read_segments_dir(dir);
@@ -104,6 +108,193 @@ fn read_segments_dir(dir: &Path) -> Value {
     Value::Object(segments)
 }
 
+/// 直拼路径的廉价残行校验：括号配平（感知字符串与转义）。
+///
+/// 单靠「首尾是大括号」会漏掉一种截断（进程恰好在某个 `}` 之后被杀）：那类行能通过
+/// 首尾检查，却让整份直拼结果不可解析。逐字节扫一遍比 `serde_json` 全量 parse 便宜
+/// 一个数量级，且不需要解析器就能排除残行。
+fn json_balanced(line: &str) -> bool {
+    let mut depth: i32 = 0;
+    let mut in_str = false;
+    let mut escaped = false;
+    for b in line.bytes() {
+        if in_str {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == b'"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_str = true,
+            b'{' | b'[' => depth += 1,
+            b'}' | b']' => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    depth == 0 && !in_str
+}
+
+/// 段索引：`[{ segmentId, bytes, width, height }]`，O(段数) 读取。
+///
+/// 只读每段首行（Meta 事件含录制视口宽高）+ 文件字节数，**不碰段内事件**——
+/// 这是「元信息先到、段按需拉」的取数基础（P19 D1）。首行缺失/非 Meta 时宽高为 null，
+/// 回放侧退化为不缩放。
+fn segment_index(dir: &Path) -> Vec<Value> {
+    let mut out = Vec::new();
+    let Ok(entries) = fs::read_dir(dir.join("segments")) else {
+        return out;
+    };
+    for e in entries.flatten() {
+        let path = e.path();
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let seg_id = segment_id_from_filename(&name).to_string();
+        let bytes = e.metadata().map(|m| m.len()).unwrap_or(0);
+        let mut width = Value::Null;
+        let mut height = Value::Null;
+        let mut first_ts = Value::Null;
+        if let Some(line) = read_segment_first_line(&path) {
+            if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                if let Some(w) = v["data"]["width"].as_u64() {
+                    width = json!(w);
+                }
+                if let Some(h) = v["data"]["height"].as_u64() {
+                    height = json!(h);
+                }
+                if let Some(t) = v["timestamp"].as_i64() {
+                    first_ts = json!(t);
+                }
+            }
+        }
+        // 尾事件时间戳：会话缺 endedAt / 段缺 hidden 时的时长兜底（外部应用导出的
+        // bundle 常见——实测某 172MB 会话 27 段零 hidden、无 endedAt）
+        let mut last_ts = Value::Null;
+        if let Some(line) = read_segment_last_line(&path) {
+            if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                if let Some(t) = v["timestamp"].as_i64() {
+                    last_ts = json!(t);
+                }
+            }
+        }
+        out.push(json!({
+            "segmentId": seg_id,
+            "bytes": bytes,
+            "width": width,
+            "height": height,
+            "firstTs": first_ts,
+            "lastTs": last_ts,
+        }));
+    }
+    out.sort_by(|a, b| a["segmentId"].as_str().cmp(&b["segmentId"].as_str()));
+    out
+}
+
+/// 元信息 + 段索引（**不含段内事件**）：回放首屏所需的最小数据集合。
+/// 供 console `read_session_meta` 与 server `GET /sessions/:id/meta` 共用。
+pub fn read_session_meta(dir: &Path) -> Result<Value, String> {
+    let session = serde_json::from_str::<Value>(
+        &fs::read_to_string(dir.join("session.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    // filter_map：单行损坏只跳过该行。旧写法（map + collect::<Option<Vec<_>>>）会让
+    // 一行坏数据把整个 windows 数组变成空——而首屏的 label/hiddenAt 全靠它。
+    let windows: Vec<Value> = fs::read_to_string(dir.join("windows.jsonl"))
+        .ok()
+        .map(|s| s.lines().filter_map(|l| serde_json::from_str(l).ok()).collect())
+        .unwrap_or_default();
+    let annotations = read_annotations(dir);
+    Ok(json!({
+        "session": session,
+        "windows": windows,
+        "annotations": annotations,
+        "segments": segment_index(dir),
+    }))
+}
+
+/// 单段事件直拼为 JSON 数组文本：jsonl 每行本身即合法 JSON，串接即可，
+/// **不做 `serde_json::Value` 往返**（P19 D2）——省掉实测 2.9GB 的中间树与二次序列化。
+/// 调用方经 raw IPC 返回字节，JS 侧一次 `JSON.parse`。
+///
+/// 只做「首尾必须是大括号」的廉价校验：跳过被截断的残行（进程中途退出的典型损坏），
+/// 不做逐行 parse（那正是本函数要避免的成本）。
+pub fn read_segment_json(dir: &Path, segment_id: &str) -> Result<String, String> {
+    if !validate_segment_id(segment_id) {
+        return Err(format!("invalid segment id: {segment_id}"));
+    }
+    let path = segment_path(dir, segment_id)
+        .ok_or_else(|| format!("segment not found: {segment_id}"))?;
+    let raw = read_segment_text(&path).ok_or_else(|| format!("读取失败：{}", path.display()))?;
+    let mut out = String::with_capacity(raw.len() + 2);
+    out.push('[');
+    let mut first = true;
+    for line in raw.lines() {
+        let l = line.trim();
+        if !l.starts_with('{') || !l.ends_with('}') || !json_balanced(l) {
+            continue;
+        }
+        if !first {
+            out.push(',');
+        }
+        out.push_str(l);
+        first = false;
+    }
+    out.push(']');
+    Ok(out)
+}
+
+/// 全库诊断信号（`type:6`）直拼为 JSON 数组文本。
+///
+/// 只做廉价子串筛选后直拼，**不 parse 任何事件**：DOM 事件占总量约 99%，逐个 parse
+/// 正是旧 `read_session` 的主要成本。误纳入的行由 JS 侧按解析后的 `type` 过滤（多传的
+/// 量极小）；判据是「包含」而非精确匹配，故不会漏判。
+/// 用途：诊断面板首屏即可拿到完整信号流，不必等各段按需加载（P19 回归修复）。
+pub fn read_session_signals_json(dir: &Path) -> Result<String, String> {
+    let seg_dir = dir.join("segments");
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(entries) = fs::read_dir(&seg_dir) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_file() {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    let mut out = String::new();
+    out.push('[');
+    let mut first = true;
+    for path in files {
+        let Some(text) = read_segment_text(&path) else {
+            continue;
+        };
+        for line in text.lines() {
+            let l = line.trim();
+            if !l.starts_with('{')
+                || !l.ends_with('}')
+                || !l.contains("\"type\":6")
+                || !json_balanced(l)
+            {
+                continue;
+            }
+            if !first {
+                out.push(',');
+            }
+            out.push_str(l);
+            first = false;
+        }
+    }
+    out.push(']');
+    Ok(out)
+}
+
 /// 读会话目录组装成 export bundle（不依赖 AppHandle，便于测试）。
 pub fn build_export_bundle(dir: &Path) -> Result<Value, String> {
     let session = serde_json::from_str::<Value>(
@@ -112,7 +303,7 @@ pub fn build_export_bundle(dir: &Path) -> Result<Value, String> {
     .map_err(|e| e.to_string())?;
     let windows: Vec<Value> = fs::read_to_string(dir.join("windows.jsonl"))
         .ok()
-        .and_then(|s| s.lines().map(|l| serde_json::from_str(l).ok()).collect())
+        .map(|s| s.lines().filter_map(|l| serde_json::from_str(l).ok()).collect())
         .unwrap_or_default();
     let segments = read_segments_dir(dir);
     let annotations = read_annotations(dir);
@@ -480,5 +671,246 @@ mod tests {
         assert_eq!(segs.len(), 2);
         assert_eq!(segs["plain#0"].as_array().unwrap().len(), 1);
         assert_eq!(segs["gz#0"].as_array().unwrap().len(), 2);
+    }
+
+    /// P19 D1：段索引只读首行——宽高取自 Meta（type 4），bytes 为文件大小，不含事件正文。
+    #[test]
+    fn session_meta_index_reads_first_line() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            &dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+        crate::storage::append_events_file(
+            &dir,
+            "main#0",
+            &[
+                json!({"data":{"width":1300,"height":800},"timestamp":1,"type":4}),
+                json!({"type":2,"timestamp":2}),
+            ],
+        )
+        .unwrap();
+
+        let meta = read_session_meta(&dir).unwrap();
+        assert_eq!(meta["session"]["id"], "s1");
+        let idx = meta["segments"].as_array().unwrap();
+        assert_eq!(idx.len(), 1);
+        assert_eq!(idx[0]["segmentId"], "main#0");
+        assert_eq!(idx[0]["width"], 1300);
+        assert_eq!(idx[0]["height"], 800);
+        assert_eq!(idx[0]["firstTs"], 1, "首行 Meta 的 timestamp");
+        assert_eq!(idx[0]["lastTs"], 2, "尾行事件的 timestamp（时长兜底）");
+        assert!(idx[0]["bytes"].as_u64().unwrap() > 0);
+        assert!(idx[0].get("events").is_none(), "段索引不含事件正文");
+    }
+
+    /// 尾行读取：文件以换行结尾（写侧惯例），应取最后一个**非空**行。
+    #[test]
+    fn segment_last_line_handles_trailing_newline() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        crate::storage::append_events_file(
+            &dir,
+            "main#0",
+            &[json!({"type":4,"timestamp":11}), json!({"type":2,"timestamp":22})],
+        )
+        .unwrap();
+        let last = crate::storage::read_segment_last_line(
+            &dir.join("segments").join("main#0.jsonl"),
+        )
+        .unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&last).unwrap()["timestamp"], 22);
+    }
+
+    /// 段索引对 gz 段同样给出 firstTs/lastTs（gz 无法逆序解压，走全文解压路径）。
+    #[test]
+    fn session_meta_index_covers_gzip_segments() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            &dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+        crate::storage::append_events_file_with(
+            &dir,
+            "gz#0",
+            &[json!({"type":4,"timestamp":7}), json!({"type":2,"timestamp":9})],
+            &crate::storage::WriteOpts::gzip(),
+        )
+        .unwrap();
+
+        let idx = read_session_meta(&dir).unwrap()["segments"].clone();
+        assert_eq!(idx[0]["firstTs"], 7);
+        assert_eq!(idx[0]["lastTs"], 9);
+    }
+
+    /// 首行非 Meta / 缺宽高时仍产出条目，宽高为 null（回放侧退化为不缩放）。
+    #[test]
+    fn session_meta_index_tolerates_missing_meta() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            &dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+        crate::storage::append_events_file(&dir, "main#0", &[json!({"type":2,"timestamp":2})])
+            .unwrap();
+
+        let idx = read_session_meta(&dir).unwrap()["segments"].clone();
+        assert_eq!(idx[0]["width"], Value::Null);
+        assert_eq!(idx[0]["height"], Value::Null);
+    }
+
+    /// P19 D2：直拼的段 JSON 与源 jsonl 语义一致（plain 与 gz 两路都走）。
+    #[test]
+    fn read_segment_json_roundtrips_plain_and_gzip() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        let rows = [
+            json!({"data":{"width":800,"height":600},"timestamp":1,"type":4}),
+            json!({"type":3,"timestamp":2}),
+        ];
+        crate::storage::append_events_file(&dir, "main#0", &rows).unwrap();
+        crate::storage::append_events_file_with(
+            &dir,
+            "gz#0",
+            &rows,
+            &crate::storage::WriteOpts::gzip(),
+        )
+        .unwrap();
+
+        for seg in ["main#0", "gz#0"] {
+            let txt = read_segment_json(&dir, seg).unwrap();
+            let arr: Vec<Value> = serde_json::from_str(&txt).unwrap();
+            assert_eq!(arr.len(), 2, "{seg} 直拼结果应可被 JSON 解析且条数一致");
+            assert_eq!(arr[0]["data"]["width"], 800);
+        }
+    }
+
+    /// 直拼路径的入参闸门：segmentId 校验（路径穿越）+ 段不存在。
+    #[test]
+    fn read_segment_json_rejects_bad_id_and_missing() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        assert!(read_segment_json(&dir, "../etc/passwd").is_err());
+        assert!(read_segment_json(&dir, "nope#9").is_err());
+    }
+
+    /// P19 回归修复：全库信号只回 type:6 行（含 plain 与 gz 两路），DOM 事件不入选。
+    #[test]
+    fn session_signals_returns_only_plugin_events() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        crate::storage::append_events_file(
+            &dir,
+            "main#0",
+            &[
+                json!({"data":{"width":800,"height":600},"timestamp":1,"type":4}),
+                json!({"data":{"plugin":"console","payload":{"level":"log","args":["hi"]}},
+                        "timestamp":2,"type":6}),
+                json!({"data":{"source":0,"adds":[]},"timestamp":3,"type":3}),
+            ],
+        )
+        .unwrap();
+        crate::storage::append_events_file_with(
+            &dir,
+            "gz#0",
+            &[
+                json!({"data":{"plugin":"error","payload":{"message":"boom","kind":"error"}},
+                        "timestamp":4,"type":6}),
+                json!({"data":{"source":1,"positions":[]},"timestamp":5,"type":3}),
+            ],
+            &crate::storage::WriteOpts::gzip(),
+        )
+        .unwrap();
+
+        let txt = read_session_signals_json(&dir).unwrap();
+        let arr: Vec<Value> = serde_json::from_str(&txt).unwrap();
+        assert_eq!(arr.len(), 2, "两段各一条 type:6");
+        assert!(arr.iter().all(|e| e["type"] == 6));
+        let plugins: Vec<&str> = arr
+            .iter()
+            .map(|e| e["data"]["plugin"].as_str().unwrap())
+            .collect();
+        assert!(plugins.contains(&"console") && plugins.contains(&"error"));
+    }
+
+    /// 配平校验不得误伤：字符串值里出现未配对的括号是合法 JSON。
+    #[test]
+    fn json_balanced_tolerates_braces_in_strings() {
+        assert!(json_balanced(r#"{"a":"{ not a brace","b":1}"#));
+        assert!(json_balanced(r#"{"a":"}","b":[1,2]}"#));
+        assert!(json_balanced(r#"{"a":"esc \" quote {","b":1}"#));
+        assert!(!json_balanced(r#"{"a":{"b":1}"#), "缺右括号");
+        assert!(!json_balanced(r#"{"a":"unterminated}"#), "字符串未闭合");
+        assert!(!json_balanced(r#"{"a":1}}"#), "多余右括号");
+    }
+
+    /// 截断点恰好落在 `}` 之后（能通过首尾检查但括号不配平）同样被排除——
+    /// 否则整份直拼结果不可解析（独立复核实测到的损坏模式）。
+    #[test]
+    fn read_segment_json_skips_truncation_ending_with_brace() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            dir.join("segments").join("main#0.jsonl"),
+            "{\"type\":4,\"timestamp\":1}\n{\"type\":6,\"timestamp\":2,\"data\":{\"plugin\":\"console\"}\n",
+        )
+        .unwrap();
+        let txt = read_segment_json(&dir, "main#0").unwrap();
+        let arr: Vec<Value> = serde_json::from_str(&txt).unwrap();
+        assert_eq!(arr.len(), 1, "括号不配平的残行被排除，其余仍可解析");
+    }
+
+    /// windows.jsonl 单行损坏只跳过该行——旧写法（map + collect::<Option<Vec<_>>>）会让
+    /// 整个数组变空，而首屏的 label/hiddenAt 全靠它。
+    #[test]
+    fn session_windows_tolerates_bad_line() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            &dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+        fs::write(
+            dir.join("windows.jsonl"),
+            "{not json}\n{\"type\":\"shown\",\"label\":\"main\",\"segmentId\":\"main#0\",\"t\":1}\n",
+        )
+        .unwrap();
+
+        for data in [read_session_meta(&dir).unwrap(), read_session(&dir).unwrap()] {
+            assert_eq!(data["windows"].as_array().unwrap().len(), 1);
+        }
+    }
+
+    /// 截断残行（进程中途退出的典型损坏）被跳过，不产出非法 JSON。
+    #[test]
+    fn read_segment_json_skips_truncated_line() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            dir.join("segments").join("main#0.jsonl"),
+            "{\"type\":4,\"timestamp\":1}\n{\"type\":2,\"timesta",
+        )
+        .unwrap();
+
+        let txt = read_segment_json(&dir, "main#0").unwrap();
+        let arr: Vec<Value> = serde_json::from_str(&txt).unwrap();
+        assert_eq!(arr.len(), 1, "残行被跳过，其余行可解析");
     }
 }

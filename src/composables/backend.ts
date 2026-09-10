@@ -43,6 +43,27 @@ export interface SessionData {
   annotations: Annotation[];
 }
 
+/** 段索引条目：段元信息，不含段内事件（`read_session_meta` 返回，O(段数) 读取）。 */
+export interface SegmentIndexEntry {
+  segmentId: string;
+  bytes: number;
+  /** 录制时视口尺寸（取自段首行 Meta 事件）；缺失为 null（回放侧不缩放）。 */
+  width: number | null;
+  height: number | null;
+  /** 首/尾事件的 timestamp。`lastTs` 是时长兜底：外部应用导出的会话常常既无
+   *  `endedAt` 也无 `hidden` 事件，段尾时间戳是唯一的时长来源。 */
+  firstTs: number | null;
+  lastTs: number | null;
+}
+
+/** 回放首屏数据：元信息 + 段索引，**不含段内事件**（P19 D1）。 */
+export interface SessionMetaPayload {
+  session: SessionMeta;
+  windows: WindowEvent[];
+  annotations: Annotation[];
+  segments: SegmentIndexEntry[];
+}
+
 /** 用户标注（session 级，与事件流分离）。 */
 export interface Annotation {
   id: string;
@@ -85,6 +106,12 @@ export interface Whoami {
 export interface Backend {
   listSessions(): Promise<SessionMeta[]>;
   readSession(id: string): Promise<SessionData>;
+  /** P19 D1：首屏取元信息 + 段索引（不带段内事件）。 */
+  readSessionMeta(id: string): Promise<SessionMetaPayload>;
+  /** P19 D1：按需取单段事件。 */
+  readSegment(id: string, segmentId: string): Promise<unknown[]>;
+  /** 全库诊断信号（type:6）：完整信号流，不依赖各段是否已加载。 */
+  readSessionSignals(id: string): Promise<unknown[]>;
   listAnnotations(id: string): Promise<Annotation[]>;
   saveAnnotations(id: string, annotations: Annotation[]): Promise<void>;
   updateSessionMeta(id: string, meta: Record<string, unknown>): Promise<SessionMeta>;
@@ -106,6 +133,18 @@ export class TauriBackend implements Backend {
   }
   async readSession(id: string) {
     return invoke<SessionData>("read_session", { id });
+  }
+  async readSessionMeta(id: string) {
+    return invoke<SessionMetaPayload>("read_session_meta", { id });
+  }
+  async readSegment(id: string, segmentId: string) {
+    // read_segment 是 raw IPC（P19 D2）：custom protocol 路径下到 JS 为 ArrayBuffer
+    // （Rust 侧 Content-Type=application/octet-stream → ipc-protocol.js 走 arrayBuffer()）。
+    // 其余形态做兜底，避免环境差异（postMessage 回退路径）让整段加载失败。
+    return decodeEvents(await invoke<unknown>("read_segment", { id, segmentId }));
+  }
+  async readSessionSignals(id: string) {
+    return decodeEvents(await invoke<unknown>("read_session_signals", { id }));
   }
   async listAnnotations(id: string) {
     return invoke<Annotation[]>("list_annotations", { id });
@@ -156,6 +195,16 @@ export class HttpBackend implements Backend {
   }
   async readSession(id: string) {
     return this.get<SessionData>(`/sessions/${enc(id)}`);
+  }
+  async readSessionMeta(id: string) {
+    return this.get<SessionMetaPayload>(`/sessions/${enc(id)}/meta`);
+  }
+  async readSegment(id: string, segmentId: string) {
+    // segmentId 形如 `main#0`——enc 会编码 `#`/`%`，服务端 percent-decode 还原
+    return this.get<unknown[]>(`/sessions/${enc(id)}/segments/${enc(segmentId)}`);
+  }
+  async readSessionSignals(id: string) {
+    return this.get<unknown[]>(`/sessions/${enc(id)}/signals`);
   }
   async listAnnotations(id: string) {
     return this.get<Annotation[]>(`/sessions/${enc(id)}/annotations`);
@@ -237,6 +286,19 @@ function enc(id: string) {
   return encodeURIComponent(id);
 }
 
+/** `read_segment` 的 raw IPC 载荷 → 事件数组。正常路径是 ArrayBuffer（见 TauriBackend
+ *  readSegment 注释），字符串/视图形态一并兼容。 */
+function decodeEvents(raw: unknown): unknown[] {
+  if (typeof raw === "string") return JSON.parse(raw) as unknown[];
+  if (raw instanceof ArrayBuffer) {
+    return JSON.parse(new TextDecoder().decode(raw)) as unknown[];
+  }
+  if (ArrayBuffer.isView(raw)) {
+    return JSON.parse(new TextDecoder().decode(raw as Uint8Array)) as unknown[];
+  }
+  return raw as unknown[];
+}
+
 // ---- 配置 + 单例 ----
 
 export type BackendMode = "tauri" | "http";
@@ -301,6 +363,9 @@ class UnconfiguredBackend implements Backend {
   }
   listSessions() { return this.boom(); }
   readSession() { return this.boom(); }
+  readSessionMeta() { return this.boom(); }
+  readSegment() { return this.boom(); }
+  readSessionSignals() { return this.boom(); }
   listAnnotations() { return this.boom(); }
   saveAnnotations() { return this.boom(); }
   updateSessionMeta() { return this.boom(); }

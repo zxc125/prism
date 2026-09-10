@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, inject, computed, watch } from "vue";
+import {
+  ref,
+  inject,
+  computed,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+  nextTick,
+} from "vue";
 import { PLAYER_CTX, type PlayerCtx } from "./context";
 import type { Signal } from "../../composables/usePlayer";
 
@@ -39,37 +47,110 @@ const filteredSignals = computed(() =>
     : player.signals.value.filter((s) => s.plugin === signalFilter.value),
 );
 
+/** 当前播放头之前的最后一条信号。signals 已按 t 升序 → 二分 O(log n)（P19 D7，
+ *  原实现每个 tick 线性扫一遍，十万级信号下是 20 次/秒的 O(n)）。 */
 const activeSigIdx = computed(() => {
-  const t = player.currentTime.value;
-  let idx = -1;
-  for (let i = 0; i < filteredSignals.value.length; i++) {
-    if (filteredSignals.value[i].t <= t) idx = i;
-    else break;
+  const t = player.displayTime.value;
+  const arr = filteredSignals.value;
+  let lo = 0;
+  let hi = arr.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid].t <= t) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
   }
-  return idx;
+  return ans;
 });
+
+// ---- 虚拟滚动（P19 D7）：只渲染视口内 + overscan 行，上下 spacer 撑高保持滚动条比例。
+// 行高运行时测量而非写死 CSS——不改样式即可保证观感零变化。
+const OVERSCAN = 8;
+const scrollTop = ref(0);
+const viewportH = ref(0);
+let rowH = 27; // 兜底；首次渲染后 measure() 覆盖为实测值
+
+const startIdx = computed(() => {
+  // 上限 clamp 到 total-1：否则极端滚动位置会让 slice(start > end) 返回空 → 视口全白
+  const total = filteredSignals.value.length;
+  const raw = Math.max(0, Math.floor(scrollTop.value / rowH) - OVERSCAN);
+  return Math.min(raw, Math.max(0, total - 1));
+});
+const endIdx = computed(() =>
+  Math.min(
+    filteredSignals.value.length,
+    Math.ceil((scrollTop.value + viewportH.value) / rowH) + OVERSCAN,
+  ),
+);
+const visibleSignals = computed(() =>
+  filteredSignals.value.slice(startIdx.value, endIdx.value),
+);
+const topPad = computed(() => startIdx.value * rowH);
+const bottomPad = computed(() =>
+  Math.max(0, (filteredSignals.value.length - endIdx.value) * rowH),
+);
+
+function measure() {
+  const el = streamRef.value;
+  if (!el) return;
+  viewportH.value = el.clientHeight;
+  const row = el.querySelector<HTMLElement>(".sig-row");
+  if (row?.offsetHeight) rowH = row.offsetHeight;
+}
+
+function onStreamScroll() {
+  const el = streamRef.value;
+  if (el) scrollTop.value = el.scrollTop;
+}
+
+/** 让第 idx 行可见（直接设 scrollTop，不用 scrollIntoView —— 后者强制同步布局）。 */
+function scrollToIdx(idx: number) {
+  const el = streamRef.value;
+  if (!el || idx < 0) return;
+  const top = idx * rowH;
+  const bottom = top + rowH;
+  if (top < el.scrollTop) el.scrollTop = top;
+  else if (bottom > el.scrollTop + el.clientHeight) {
+    el.scrollTop = bottom - el.clientHeight;
+  }
+}
+
+let ro: ResizeObserver | null = null;
+onMounted(() => {
+  measure();
+  ro = new ResizeObserver(() => measure());
+  if (streamRef.value) ro.observe(streamRef.value);
+  void nextTick(measure);
+});
+onBeforeUnmount(() => {
+  ro?.disconnect();
+  ro = null;
+});
+
+// 信号是异步到达的：面板挂载时列表为空、没有行可测，而行数变化不会改变容器自身
+// 的 box（flex:1 + overlay 滚动条）→ ResizeObserver 不会触发。必须在这里重测行高，
+// 否则 rowH 会一直停在兜底值（实测真实行高 30px vs 兜底 27px，滚动映射差 ~11%）。
+watch(
+  () => filteredSignals.value.length,
+  () => void nextTick(measure),
+);
+// 切换过滤条件后列表整体变化，回到顶部避免落在空白区
+watch(signalFilter, () => {
+  scrollTop.value = 0;
+  const el = streamRef.value;
+  if (el) el.scrollTop = 0;
+});
+// 折叠/切换 tab 会让流容器尺寸变化，恢复时重新测量
+watch(diagTab, () => void nextTick(measure));
 
 function sigTag(s: Signal): string {
   if (s.plugin === "console") return s.payload.level;
   if (s.plugin === "network") return s.payload.kind;
   return s.payload.kind;
-}
-function formatArg(a: unknown): string {
-  if (a === null) return "null";
-  if (typeof a === "object") {
-    try {
-      return JSON.stringify(a);
-    } catch {
-      return String(a);
-    }
-  }
-  return String(a);
-}
-function sigText(s: Signal): string {
-  if (s.plugin === "console") return s.payload.args.map(formatArg).join(" ");
-  if (s.plugin === "network")
-    return `${s.payload.method} ${s.payload.url}  ${s.payload.status}  ${s.payload.duration}ms`;
-  return s.payload.message;
 }
 
 function onSignalClick(t: number) {
@@ -110,10 +191,10 @@ const activeAnnoId = computed(() => {
   return best;
 });
 
+// 播放中不滚动（P19 D7）：滚动跟随会持续触发布局与重绘，只在暂停/seek/点击时对齐。
 watch(activeSigIdx, (idx) => {
-  if (idx < 0 || !streamRef.value) return;
-  const el = streamRef.value.querySelector<HTMLElement>(`[data-idx="${idx}"]`);
-  el?.scrollIntoView({ block: "nearest" });
+  if (player.playing.value) return;
+  scrollToIdx(idx);
 });
 </script>
 
@@ -148,19 +229,25 @@ watch(activeSigIdx, (idx) => {
       </el-select>
     </header>
 
-    <div v-show="diagTab === 'signal'" ref="streamRef" class="signal-stream">
+    <div
+      v-show="diagTab === 'signal'"
+      ref="streamRef"
+      class="signal-stream"
+      @scroll="onStreamScroll"
+    >
+      <div :style="{ height: topPad + 'px' }" />
       <div
-        v-for="(s, i) in filteredSignals"
-        :key="i"
-        :data-idx="i"
+        v-for="(s, i) in visibleSignals"
+        :key="startIdx + i"
         class="sig-row"
-        :class="{ 'is-active': i === activeSigIdx }"
+        :class="{ 'is-active': startIdx + i === activeSigIdx }"
         @click="onSignalClick(s.t)"
       >
         <span class="sig-tc mono">{{ sigTimecode(s.t) }}</span>
         <span class="sig-tag mono" :style="{ '--c': SIG_COLOR[s.plugin] }">{{ sigTag(s) }}</span>
-        <span class="sig-text" :title="sigText(s)">{{ sigText(s) }}</span>
+        <span class="sig-text" :title="s.text">{{ s.text }}</span>
       </div>
+      <div :style="{ height: bottomPad + 'px' }" />
       <div v-if="!filteredSignals.length" class="sig-empty">无信号</div>
     </div>
 

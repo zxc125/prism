@@ -15,14 +15,38 @@ use serde_json::{json, Value};
 
 use observer_storage::{
     append_events_file, append_lifecycle, build_export_bundle, create_session, finalize_session,
-    import_bundle, list_sessions, merge_session_meta, now_ms, read_annotations, read_session,
-    redact_bundle, validate_session_id, write_annotations, BUNDLE_FORMAT, BUNDLE_VERSION,
+    import_bundle, list_sessions, merge_session_meta, now_ms, read_annotations, read_segment_json,
+    read_session, read_session_meta, read_session_signals_json, redact_bundle, validate_session_id,
+    write_annotations, BUNDLE_FORMAT, BUNDLE_VERSION,
 };
 
 use crate::tenant::TenantConfig;
 
 fn bad(msg: &str) -> (u16, String) {
     (400, msg.to_string())
+}
+
+/// 极简 percent-decode（只还原 %XX）。segmentId 形如 `main#0`，`#` 在 URL 里必须编码为
+/// `%23`（否则被当作 fragment 截断），服务端据此还原；非法转义原样保留，
+/// 后续 [`validate_segment_id`] 会拒绝。
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            // 用 get() 而非切片：非 ASCII 字节可能落在字符边界内，切片会 panic
+            // （当前不可经 HTTP 触达——tiny_http 丢弃含裸非 ASCII 的请求行——但不留隐患）
+            if let Some(v) = s.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn unique_session_id(root: &Path) -> String {
@@ -207,6 +231,31 @@ pub fn handle_read_route(
             let dir = root.join(id);
             let data = read_session(&dir).map_err(|e| (404, e))?;
             Ok((200, Some(data.to_string())))
+        }
+        ("GET", ["sessions", id, "meta"]) => {
+            if !validate_session_id(id) {
+                return Err(bad("invalid session id"));
+            }
+            let dir = root.join(id);
+            let data = read_session_meta(&dir).map_err(|e| (404, e))?;
+            Ok((200, Some(data.to_string())))
+        }
+        ("GET", ["sessions", id, "signals"]) => {
+            if !validate_session_id(id) {
+                return Err(bad("invalid session id"));
+            }
+            let dir = root.join(id);
+            let json = read_session_signals_json(&dir).map_err(|e| (404, e))?;
+            Ok((200, Some(json)))
+        }
+        ("GET", ["sessions", id, "segments", seg_id]) => {
+            if !validate_session_id(id) {
+                return Err(bad("invalid session id"));
+            }
+            let dir = root.join(id);
+            let seg_id = percent_decode(seg_id);
+            let json = read_segment_json(&dir, &seg_id).map_err(|e| (404, e))?;
+            Ok((200, Some(json)))
         }
         ("GET", ["sessions", id, "annotations"]) => {
             if !validate_session_id(id) {
@@ -679,5 +728,102 @@ mod tests {
         // beta 的 open_segments 仍应有 1 个（acme 的 end 不影响 beta）
         let beta_key = seg_key(Some(&t_beta), &b_sid);
         assert_eq!(open.get(&beta_key).map(|v| v.len()), Some(1));
+    }
+
+    /// P19：分段读路由——meta 返回段索引（不含事件），segments/:segId 返回单段事件数组，
+    /// 且 `#` 经 %23 编码后可正确还原。
+    #[test]
+    fn read_api_meta_and_segment() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let mut open = HashMap::new();
+
+        let (_, body) =
+            handle_route(root, &mut open, "/ingest/session", json!({ "source": "web" }), None)
+                .unwrap();
+        let sid = serde_json::from_str::<Value>(&body.unwrap()).unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        handle_route(
+            root,
+            &mut open,
+            "/ingest/segment",
+            json!({ "sessionId": &sid, "label": "web", "segmentId": "web#0", "startedAt": 1 }),
+            None,
+        )
+        .unwrap();
+        handle_route(
+            root,
+            &mut open,
+            "/ingest/events",
+            json!({ "sessionId": &sid, "segmentId": "web#0",
+                    "events": [
+                        { "type": 4, "timestamp": 1, "data": { "width": 1280, "height": 720 } },
+                        { "type": 6, "timestamp": 2,
+                          "data": { "plugin": "console", "payload": { "level": "log", "args": ["hi"] } } }
+                    ] }),
+            None,
+        )
+        .unwrap();
+
+        // GET /sessions/:id/meta —— 只有段索引，没有事件正文
+        let (st, meta_body) = handle_read_route(
+            root,
+            "GET",
+            &format!("/sessions/{sid}/meta"),
+            Value::Null,
+            None,
+        )
+        .unwrap();
+        assert_eq!(st, 200);
+        let meta: Value = serde_json::from_str(&meta_body.unwrap()).unwrap();
+        assert_eq!(meta["session"]["id"], sid);
+        let idx = meta["segments"].as_array().unwrap();
+        assert_eq!(idx.len(), 1);
+        assert_eq!(idx[0]["segmentId"], "web#0");
+        assert_eq!(idx[0]["width"], 1280);
+        assert_eq!(idx[0]["height"], 720);
+        assert!(meta.get("segments").unwrap()[0].get("events").is_none());
+
+        // GET /sessions/:id/segments/:segId —— `#` 必须编码为 %23
+        let (st, seg_body) = handle_read_route(
+            root,
+            "GET",
+            &format!("/sessions/{sid}/segments/web%230"),
+            Value::Null,
+            None,
+        )
+        .unwrap();
+        assert_eq!(st, 200);
+        let events: Vec<Value> = serde_json::from_str(&seg_body.unwrap()).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["type"], 4);
+
+        // GET /sessions/:id/signals —— 只回 type:6（全量信号，与段是否加载解耦）
+        let (st, sig_body) = handle_read_route(
+            root,
+            "GET",
+            &format!("/sessions/{sid}/signals"),
+            Value::Null,
+            None,
+        )
+        .unwrap();
+        assert_eq!(st, 200);
+        let sigs: Vec<Value> = serde_json::from_str(&sig_body.unwrap()).unwrap();
+        assert_eq!(sigs.len(), 1);
+        assert_eq!(sigs[0]["type"], 6);
+        assert_eq!(sigs[0]["data"]["plugin"], "console");
+
+        // 路径穿越的 segmentId 被拒
+        let (st, _) = handle_read_route(
+            root,
+            "GET",
+            &format!("/sessions/{sid}/segments/..%2F..%2Fetc"),
+            Value::Null,
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(st, 404);
     }
 }

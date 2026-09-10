@@ -75,9 +75,18 @@ fn list_sessions(app: AppHandle) -> Result<Vec<Value>, String> {
 }
 
 /// 回放用：一次性返回会话元信息、窗口生命周期、各 segment 事件。
-#[tauri::command]
-fn read_session(app: AppHandle, id: String) -> Result<Value, String> {
-    observer_storage::read_session(&recordings_root(&app).join(&id))
+///
+/// P17 D3 同类遗漏补修（2026-09-10）：大会话逐行 parse 成 `Value` 再由 Tauri
+/// `serde_json::to_string` 序列化是秒级操作（实测 debug 下 172MB 会话 ≈ 13.8s），
+/// 非 async 命令默认跑主线程（macOS = NSApplication 事件循环）会冻结整个应用。
+/// `async fn` + `spawn_blocking`（与 P18 `export_session_to_file` 同构）丢阻塞线程池，
+/// 不占 async worker；命令名/参数/返回类型不变，前端零改动。
+#[tauri::command(async)]
+async fn read_session(app: AppHandle, id: String) -> Result<Value, String> {
+    let dir = recordings_root(&app).join(&id);
+    tauri::async_runtime::spawn_blocking(move || observer_storage::read_session(&dir))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -107,23 +116,38 @@ fn export_session(app: AppHandle, id: String) -> Result<Value, String> {
 }
 
 /// 导入会话 JSON bundle（内容直传；小文件 / 云端 HttpBackend 上传路径）。
-#[tauri::command]
-fn import_session(app: AppHandle, content: String) -> Result<String, String> {
-    import_bundle_content(&recordings_root(&app), &content)
+/// P17 D3 同类遗漏补修：大会话 content 解析 + 落盘同属秒级操作，同上丢阻塞线程池。
+#[tauri::command(async)]
+async fn import_session(app: AppHandle, content: String) -> Result<String, String> {
+    let root = recordings_root(&app);
+    tauri::async_runtime::spawn_blocking(move || import_bundle_content(&root, &content))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// 从文件路径导入会话 bundle（Rust 侧读文件，避免大 JSON 过 IPC）。
-#[tauri::command]
-fn import_session_path(app: AppHandle, path: String) -> Result<String, String> {
-    let content = fs::read_to_string(&path).map_err(|e| format!("读取文件失败：{e}"))?;
-    import_bundle_content(&recordings_root(&app), &content)
+/// P17 D3 同类遗漏补修：读盘 + 解析大会话 bundle 同属秒级操作。
+#[tauri::command(async)]
+async fn import_session_path(app: AppHandle, path: String) -> Result<String, String> {
+    let root = recordings_root(&app);
+    tauri::async_runtime::spawn_blocking(move || {
+        let content = fs::read_to_string(&path).map_err(|e| format!("读取文件失败：{e}"))?;
+        import_bundle_content(&root, &content)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// 读取文本文件内容（供 HttpBackend 模式：文件选择器拿 path 后读内容上传云端）。
 /// 仅读取用户经 dialog 主动选择的文件。
-#[tauri::command]
-fn read_text_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| format!("读取文件失败：{e}"))
+/// P17 D3 同类遗漏补修：选中的可能是大会话 bundle（百 MB 级读盘）。
+#[tauri::command(async)]
+async fn read_text_file(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        fs::read_to_string(&path).map_err(|e| format!("读取文件失败：{e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

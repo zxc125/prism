@@ -99,7 +99,9 @@ fn update_session_meta(app: AppHandle, id: String, meta: Value) -> Result<Value,
 }
 
 /// 导出会话为单文件 JSON bundle。前端拿到后用 Blob 下载，零云依赖。
-#[tauri::command]
+/// `(async)`（2026-09-10，与插件 export_session 同步化修复）：大 bundle 读盘+组装
+/// 脱离主线程，console self-obs 导出大会话不再冻结窗口。
+#[tauri::command(async)]
 fn export_session(app: AppHandle, id: String) -> Result<Value, String> {
     build_export_bundle(&recordings_root(&app).join(&id))
 }

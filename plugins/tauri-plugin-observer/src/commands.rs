@@ -273,7 +273,12 @@ pub fn list_sessions<R: Runtime>(
 
 /// Local 模式：导出会话为 `prism-session` bundle（JSON，契约 version 1 不变，P16 D5）。
 /// 前端拿到后自行落盘/传输；session_id 纯数字校验防路径穿越（复用 P7 防护）。
-#[tauri::command]
+///
+/// `(async)`（2026-09-10，bond 0910 提案改动 A）：与 [`append_events`]（P17 D3）同类——
+/// 读全部段文件 + 组装 bundle 是秒级操作，非 async 命令默认跑主线程（macOS =
+/// NSApplication 事件循环）会冻结全进程窗口。只读命令无保序约束，加 `(async)` 脱离
+/// 主线程即可；命令名/返回类型不变，权限与注册零改动。
+#[tauri::command(async)]
 pub fn export_session<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, SessionState>,

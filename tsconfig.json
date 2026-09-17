@@ -18,7 +18,14 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* workspace 包类型直连 src（dist 不进 git，CI 全新 checkout 无 dist——
+       与 vite alias 配套，类型/运行时都脱离 dist；npm 消费方仍走包内 exports → dist） */
+    "paths": {
+      "@prism-obs/observer-sdk": ["./packages/observer-sdk/src/index.ts"],
+      "@prism-obs/observer-tauri": ["./packages/observer-tauri/src/index.ts"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
   "references": [{ "path": "./tsconfig.node.json" }]

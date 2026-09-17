@@ -23,7 +23,7 @@
 
 - **入口指向 dist**：`main`/`types`/`exports` 从 `src/index.ts` 改为 `dist/index.js` + `dist/index.d.ts`；`files` 收窄为 `["dist"]`。
 - **d.ts 生成**：`vite-plugin-dts`（`rollupTypes: true` 合并单文件 d.ts）+ `sourcemap: true`。
-- **内部 dev 与发布入口分离**：根 [vite.config.ts](../../vite.config.ts) + [examples/tauri-demo/vite.config.ts](../../examples/tauri-demo/vite.config.ts) 加 `resolve.alias`，内部 dev/build 直连 src 源码（热更新），npm 发布的消费方走 `exports` → dist。
+- **内部 dev 与发布入口分离**：根 [vite.config.ts](../../vite.config.ts) + [examples/tauri-demo/vite.config.ts](../../examples/tauri-demo/vite.config.ts) 加 `resolve.alias`，内部 dev/build 直连 src 源码（热更新），npm 发布的消费方走 `exports` → dist。**2026-09-17 补全**：alias 扩到 observer-tauri + 根 tsconfig.json 加 `paths`（两包类型直连 src）——CI 全新 checkout 无 dist 时，此前 observer-tauri 运行时走 node_modules→dist、类型解析撞 dist/index.d.ts，双挂。
 - **observer-tauri external 用正则**：`/^@tauri-apps\/api/` 匹配子路径（`/core`、`/event` 等），否则整个 `@tauri-apps/api` 被打进 bundle（80KB → 2.4KB）。
 - **observer-tauri 发布用 `pnpm publish`**（非 `npm publish`）：pnpm 自动把 `workspace:*` 解析成精确版本（`0.1.0`），否则消费方装不了。下次发版改 `workspace:^` 可得 `^0.1.0` 更灵活。
 - **国内镜像分离**：全局 registry 是 `npmmirror`（只读镜像），登录/发布都加 `--registry https://registry.npmjs.org/` 指定官方源。

@@ -7,8 +7,13 @@ import { fileURLToPath, URL } from "node:url";
 
 // monorepo 内部 dev/build 直接走 SDK 源码（热更新）；npm 发布的消费方走 SDK package.json
 // exports → dist。两端入口分离，避免 dev server 误用旧 dist 产物。
+// P21 后补：observer-tauri 同样直连 src——此前走 node_modules → dist，CI 全新 checkout
+// 无 dist 时 vite 构建必挂（与 tsconfig paths 配套，类型/运行时都脱离 dist）。
 const sdkSrc = fileURLToPath(
   new URL("./packages/observer-sdk/src/index.ts", import.meta.url),
+);
+const tauriSrc = fileURLToPath(
+  new URL("./packages/observer-tauri/src/index.ts", import.meta.url),
 );
 
 // @ts-expect-error process is a nodejs global
@@ -34,6 +39,7 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "@prism-obs/observer-sdk": sdkSrc,
+      "@prism-obs/observer-tauri": tauriSrc,
     },
   },
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

@@ -9,7 +9,7 @@
 | npm | `@prism-obs/observer-sdk` | 0.3.0 | 外部 Web 应用采集（P17 起 `signal()` 注入 + flush 串行化） |
 | npm | `@prism-obs/observer-tauri` | 0.5.0 | 外部 Tauri 应用 JS 驱动（P16 双模式；P17 起手动档 controller `startSegment`/`stopSegment`/`signal`/`active` + `gating: "manual"`；P18 起 `exportSessionToFile` 插件直写落盘） |
 | crates.io | `observer-storage` | 0.1.0 | 存储层（plugin 的传递依赖） |
-| crates.io | `tauri-plugin-observer` | 0.3.0 | 外部 Tauri 应用 Rust 协调插件（P16 起 Local 泛化 + list/export 只读命令；P17 起 `append_events` async 化脱主线程，0.2.2 补 `export_session` 同类遗漏；P18 起新增 `export_session_to_file` 插件代执行落盘） |
+| crates.io | `tauri-plugin-observer` | 0.4.0 | 外部 Tauri 应用 Rust 协调插件（P16 起 Local 泛化 + list/export 只读命令；P17 起 `append_events` async 化脱主线程，0.2.2 补 `export_session` 同类遗漏；P18 起新增 `export_session_to_file` 插件代执行落盘；P20 起落盘根可配 `dir_base`/`dir_name` + `recordings_root_with`） |
 
 **不发布**：`src-tauri/app`（主应用）、`examples/*`（示例）、`site`（官网）、`crates/observer-server`（自托管二进制，暂不发，见「未做」）。
 

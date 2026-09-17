@@ -26,9 +26,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. **闭环到回放+诊断** - 不做告警/生产 RUM；诊断 = 回放带 error/console/network 上下文 + 导出/标注/分享。
 4. **交错事件模型** - error/console/network 以 rrweb plugin 事件（`type:6`）交错进同一条事件流，与 DOM 共享时间轴。
 
-阶段路径：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享 -> P7 离线采集与 bundle 契约 -> P8 云端 server 抽取 -> P9 多租户与运营加固 -> P10 console 2.0 重设计 + 浏览器化 -> P11 官网与品牌 -> P12 官网 i18n -> P13 官网文档站 -> P14 录制事件量控 -> P15 手册小白化 -> P16 外部应用本地落盘 -> P17 段控制上收与性能加固 -> P18 导出to-file变体 -> P19 大文件回放性能。各阶段实现细节见 [docs/阶段路径/](docs/阶段路径/)，架构方案见 [docs/架构/](docs/架构/)，品牌见 [docs/品牌/](docs/品牌/)。
+阶段路径：P1 分析端页面改造 -> P2 诊断信号采集 -> P3 sink 抽象 -> P4 Web SDK -> P5 Tauri Plugin -> P6 导出/标注/分享 -> P7 离线采集与 bundle 契约 -> P8 云端 server 抽取 -> P9 多租户与运营加固 -> P10 console 2.0 重设计 + 浏览器化 -> P11 官网与品牌 -> P12 官网 i18n -> P13 官网文档站 -> P14 录制事件量控 -> P15 手册小白化 -> P16 外部应用本地落盘 -> P17 段控制上收与性能加固 -> P18 导出to-file变体 -> P19 大文件回放性能 -> P20 外部落盘根自定义。各阶段实现细节见 [docs/阶段路径/](docs/阶段路径/)，架构方案见 [docs/架构/](docs/架构/)，品牌见 [docs/品牌/](docs/品牌/)。
 
-**进度**：P1-P12 全部 ✅；P13 官网文档站 Phase 1 ✅（[方案](docs/架构/官网文档站（方案）.md) · [P13](docs/阶段路径/P13-官网文档站.md)）；P14 录制事件量控 🚧（A/B + 发版 + 实测 + 3.3 手册 ✅，余 2.3 手动对照，[P14](docs/阶段路径/P14-录制事件量控.md)）；P15 手册小白化 ✅（[P15](docs/阶段路径/P15-手册小白化.md)，全链路 live run 留手动场景）；P16 外部应用本地落盘 ✅（[P16](docs/阶段路径/P16-外部应用本地落盘.md)，实测 + 发版 crates 0.2.0 / npm 0.3.0）；P17 段控制上收与性能加固 ✅（[P17](docs/阶段路径/P17-段控制上收与性能加固.md)，上游含发版 crates 0.2.1（+0910 补丁 0.2.2：`export_session` async 化）/ npm 0.3.0·0.4.0 + 下游对接验收完成 2026-09-10）；P18 导出 to-file 变体 ✅（[P18](docs/阶段路径/P18-导出to-file变体.md)，发版 crates 0.3.0 / npm 0.5.0，2026-09-10）；P19 大文件回放性能 ✅（[P19](docs/阶段路径/P19-大文件回放性能.md)，落地 + 运行时验收通过 2026-09-10；Phase D 延后）。下表只列「是什么 + 1-2 个核心指针 + 验证状态」，实现细节归各阶段文档（零信息丢失，已逐一核对指针落在对应 P 文档内）。
+**进度**：P1-P12 全部 ✅；P13 官网文档站 Phase 1 ✅（[方案](docs/架构/官网文档站（方案）.md) · [P13](docs/阶段路径/P13-官网文档站.md)）；P14 录制事件量控 🚧（A/B + 发版 + 实测 + 3.3 手册 ✅，余 2.3 手动对照，[P14](docs/阶段路径/P14-录制事件量控.md)）；P15 手册小白化 ✅（[P15](docs/阶段路径/P15-手册小白化.md)，全链路 live run 留手动场景）；P16 外部应用本地落盘 ✅（[P16](docs/阶段路径/P16-外部应用本地落盘.md)，实测 + 发版 crates 0.2.0 / npm 0.3.0）；P17 段控制上收与性能加固 ✅（[P17](docs/阶段路径/P17-段控制上收与性能加固.md)，上游含发版 crates 0.2.1（+0910 补丁 0.2.2：`export_session` async 化）/ npm 0.3.0·0.4.0 + 下游对接验收完成 2026-09-10）；P18 导出 to-file 变体 ✅（[P18](docs/阶段路径/P18-导出to-file变体.md)，发版 crates 0.3.0 / npm 0.5.0，2026-09-10）；P19 大文件回放性能 ✅（[P19](docs/阶段路径/P19-大文件回放性能.md)，落地 + 运行时验收通过 2026-09-10；Phase D 延后）；P20 外部落盘根自定义 ✅（[P20](docs/阶段路径/P20-外部落盘根自定义.md)，subagent 独立复核零问题 + 发版 crates 0.4.0，2026-09-17；bond-sat 依赖锁定回改 0.4.0 待其确认）。下表只列「是什么 + 1-2 个核心指针 + 验证状态」，实现细节归各阶段文档（零信息丢失，已逐一核对指针落在对应 P 文档内）。
 
 | 阶段 | 主题 | 关键产出指针 | 验证 |
 | --- | --- | --- | --- |
@@ -51,6 +51,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | P17 | 段控制上收与性能加固 | [segment-recorder.ts](packages/observer-sdk/src/segment-recorder.ts) `signal()` + flush 串行化 · [observer-tauri](packages/observer-tauri/src/index.ts) controller 手动档（`startSegment`/`stopSegment`/`signal`/`active` + `gating: "manual"`）· 插件 `append_events` async 化（脱主线程；`export_session` 同类遗漏由 0.2.2 补，含 console 自有命令）· [方案](docs/架构/段控制上收与性能加固（方案）.md) · [测试流程](docs/测试/P17-测试流程.md) | ✅ cargo test 5 + vitest 3 + console/site build ✅ + subagent 复核全过 · 发版 crates 0.2.1+0.2.2 + npm 0.3.0·0.4.0 · 下游对接验收完成 2026-09-10 |
 | P18 | 导出 to-file 变体 | 插件 `export_session_to_file`（async + spawn_blocking + `.tmp` 原子写，Local 限定）+ [observer-tauri](packages/observer-tauri/src/index.ts) `exportSessionToFile` · [方案](docs/架构/导出to-file变体（方案）.md) · [测试流程](docs/测试/P18-测试流程.md) | cargo test 8 + vitest 3 + console/site build ✅ + subagent 复核（1 阻断已修）· 发版 crates 0.3.0 + npm 0.5.0（2026-09-10）|
 | P19 | 大文件回放性能 | 读路径分段化（[bundle.rs](crates/observer-storage/src/bundle.rs) `read_session_meta`/`read_segment_json`/`read_session_signals_json` + raw IPC）+ 回放按需加载（[usePlayer.ts](src/composables/usePlayer.ts) 懒建/回收 Replayer、`activeAt` 按 label 去重、预览态 seek、信号流虚拟滚动、废弃播放中纠偏）· [方案](docs/架构/大文件回放性能（方案）.md) · [测试流程](docs/测试/P19-测试流程.md) | ✅ storage 33 + server 23+9 + vitest 3 + 两轮 subagent 复核（首轮 3 严重已修）+ 运行时验收（用户实测；172MB 首屏 14.8KB/31ms，全片 play() 11.6万→27）· Phase D 延后 |
+| P20 | 外部落盘根自定义 | 插件 `ObserverConfig` `dir_base`/`dir_name`（[config.rs](plugins/tauri-plugin-observer/src/config.rs) `DirBase` 枚举）+ [storage.rs](plugins/tauri-plugin-observer/src/storage.rs) `recordings_root_with`（原函数委托保留，console 13 处调用点零改动；切根不迁移）· [方案](docs/架构/外部落盘根自定义（方案）.md) · [测试流程](docs/测试/P20-测试流程.md) | ✅ 插件 11 + storage 33 + server 32 全绿 + build:site ✅ + subagent 独立复核零问题 · 发版 crates 0.4.0（2026-09-17） |
 
 ## 架构
 
@@ -58,7 +59,7 @@ Tauri 2 桌面应用：Vue 3 + Vite 6 前端位于 [src/](src/)，Rust 后端位
 
 ### 录制 / 回放系统（横跨前端 + 后端）
 
-rrweb 在前端 webview 里跑，每个窗口各一个 `record()` 实例；事件按 segment 流式落盘到 `appDataDir/recordings/<sessionId>/`：
+rrweb 在前端 webview 里跑，每个窗口各一个 `record()` 实例；事件按 segment 流式落盘到落盘根（P20 起 `<dir_base>/<dir_name>` 可配，默认 `appDataDir/recordings`）下的 `<sessionId>/`：
 
 ```
 recordings/<sessionId>/
@@ -71,7 +72,7 @@ recordings/<sessionId>/
 关键机制（需结合多文件理解）：
 
 - **会话与段**：`start_session` 置 active 并广播 `recording-session` 事件；各窗口的 `useRecorder`（[src/composables/useRecorder.ts](src/composables/useRecorder.ts)，由 [App.vue](src/App.vue) 挂载）收到后 `invoke("plugin:observer|begin_segment")` 分配 segmentId `<label>#<n>` 并启动 rrweb。`player-*` 窗口跳过录制；P10 起 in-app player 路由 `/s/:id` 也跳过（hash 路由守卫 `isPlayerRoute()` + `hashchange` 监听，进入 player 暂停当前段、离开若会话仍活跃则开新段）。
-- **录制协调已抽成插件**：`start_session`/`stop_session`/`is_recording_active`/`begin_segment`/`append_events` 等录制命令与 `on_window_event` 生命周期拦截已搬进独立 crate [`plugins/tauri-plugin-observer`](plugins/tauri-plugin-observer)（`tauri-plugin-observer`）。两种模式：**Local**（Rust 直接落盘到 `appDataDir/recordings/`——console self-obs 与外部应用 opt-in 本地落盘，[P16](docs/阶段路径/P16-外部应用本地落盘.md)）与 **Remote**（外部 Tauri 应用，Rust 只管窗口协调 + 事件驱动，前端 `HttpSink` 上报到 console）。console 装插件 Local 模式（`skip_focus_prefix: "player-"`），前端 `TauriSink`（P16 起下沉到 [packages/observer-tauri](packages/observer-tauri)，console 侧 re-export）调 `plugin:observer|*` 命令；`read_session`/`delete_session`/`open_window`/ingest 仍留 [src-tauri/src/lib.rs](src-tauri/src/lib.rs)，插件侧另有 Local 限定的 `list_sessions`/`export_session` 只读命令（导出 bundle 闭环回 console 导入）。插件命令需在 capabilities 授权 `observer:default`（[default.json](src-tauri/capabilities/default.json)）；console 自定义 command（`open_window` 等）仍无需授权。
+- **录制协调已抽成插件**：`start_session`/`stop_session`/`is_recording_active`/`begin_segment`/`append_events` 等录制命令与 `on_window_event` 生命周期拦截已搬进独立 crate [`plugins/tauri-plugin-observer`](plugins/tauri-plugin-observer)（`tauri-plugin-observer`）。两种模式：**Local**（Rust 直接落盘到 `<dir_base>/<dir_name>`（默认 `appDataDir/recordings/`，P20 起可配）——console self-obs 与外部应用 opt-in 本地落盘，[P16](docs/阶段路径/P16-外部应用本地落盘.md)）与 **Remote**（外部 Tauri 应用，Rust 只管窗口协调 + 事件驱动，前端 `HttpSink` 上报到 console）。console 装插件 Local 模式（`skip_focus_prefix: "player-"`），前端 `TauriSink`（P16 起下沉到 [packages/observer-tauri](packages/observer-tauri)，console 侧 re-export）调 `plugin:observer|*` 命令；`read_session`/`delete_session`/`open_window`/ingest 仍留 [src-tauri/src/lib.rs](src-tauri/src/lib.rs)，插件侧另有 Local 限定的 `list_sessions`/`export_session` 只读命令（导出 bundle 闭环回 console 导入）。插件命令需在 capabilities 授权 `observer:default`（[default.json](src-tauri/capabilities/default.json)）；console 自定义 command（`open_window` 等）仍无需授权。
 - **子窗口关闭=隐藏**：录制期间，子窗口的 `CloseRequested` 被拦截为 `hide()` + 记 `hidden` + `emit_to` segment:stop；再次 `open_window` 复用已隐藏窗口时 `show()` + 插件 `emit_segment_start_if_active` 开新段。主窗口关闭不拦截 = 退出进程。见插件 [lifecycle.rs](plugins/tauri-plugin-observer/src/lifecycle.rs)（Tauri 2 plugin Builder 无 `on_window_event`，用 `on_window_ready` 给每窗口挂 `Window::on_window_event`）。
 - **跨窗口对齐**：rrweb 事件带绝对 `timestamp`，所有窗口共享墙上时钟，回放时按 `shown.t ~ hidden.t` 区间在主时间轴上同步驱动各 segment 的 `Replayer`。见 [src/composables/usePlayer.ts](src/composables/usePlayer.ts)。
 - **回放**：[PlayerShell](src/components/player/PlayerShell.vue)（路由 `/s/:id`，P10 起 in-app + 面包屑，不再开独立窗口）用底层 `Replayer`（rrweb-player 是 Vue 2，不能用）+ 自建 Element Plus 控制条，平铺显示当前活跃窗口。子组件 [ReplayGrid](src/components/player/ReplayGrid.vue)/[Timeline](src/components/player/Timeline.vue)/[DiagnosisPanel](src/components/player/DiagnosisPanel.vue) 通过 `provide/inject`（`PLAYER_CTX`）共享 usePlayer 实例。
@@ -106,7 +107,7 @@ recordings/<sessionId>/
 
 ### 开发流程 harness
 
-本项目以「P 阶段」为开发单位（P1–P18 已落地，见进度表）。开发流已工具化为 7 个 slash commands + 4 份模板 + 2 个非阻断 hooks，完整方案见 [开发流harness（方案）](docs/架构/开发流harness（方案）.md)。
+本项目以「P 阶段」为开发单位（P1–P20，见进度表）。开发流已工具化为 7 个 slash commands + 4 份模板 + 2 个非阻断 hooks，完整方案见 [开发流harness（方案）](docs/架构/开发流harness（方案）.md)。
 
 **7 个命令入口**：
 

@@ -50,3 +50,10 @@
 - `crates/observer-server` 发布到 crates.io（自托管 `cargo install observer-server` 单二进制）。
 - npm `workspace:*` → `workspace:^`（observer-tauri 依赖 observer-sdk 的版本灵活性）。
 - observer-storage / observer-server 改名带 `prism` 品牌前缀（crates.io 无 scope，目前 `observer-*` 一致系列暂不改）。
+- tauri updater 自动更新（需 Tauri 签名密钥 + updater 配置）与 macOS 签名/公证（Apple Developer 账号）——正式对外分发时再上，见上节「不做」。
+- console web 经 GH Pages 直托管（vite `base` 构建变体，在线即开免下载 zip）——可选进阶，未排期。
+
+## git remote 布局（2026-09-17 调整）
+
+- **`origin` = GitHub `zxc125/prism`**（主：push/fetch + Actions release + GH Pages 触发）；main 跟踪 `origin/main`。
+- **`gitee` = 备推**（`git push gitee main` 手动同步，不自动）。

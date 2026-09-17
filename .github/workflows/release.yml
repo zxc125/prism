@@ -1,0 +1,101 @@
+# Prism 桌面客户端 + console web 发布（约定见 docs/决策/npm-crates发布.md「GitHub Releases」节）
+# 触发：推 app-v* tag——tag 后缀必须与 src-tauri/tauri.conf.json 的 version 一致
+name: release
+
+on:
+  push:
+    tags:
+      - 'app-v*'
+
+jobs:
+  tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest # Apple Silicon
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest # Intel
+            args: --target x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: ''
+          - platform: windows-latest
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Linux deps (webkit2gtk 等 Tauri 依赖)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # src-tauri/.cargo/config.toml 把 crates.io 重定向到 rsproxy（国内镜像）——
+      # 对境外 runner 慢且不稳；仅 CI 移除，仓库配置不动（CLAUDE.md 环境说明不受影响）
+      - name: Bypass crates.io mirror (CI only)
+        run: rm -f src-tauri/.cargo/config.toml
+
+      - name: Build & upload installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: 'Prism Console app-v__VERSION__'
+          releaseBody: '桌面客户端安装包（macOS / Windows / Linux）。浏览器模式需自备 observer-server 后端。macOS 包未签名，首次打开：右键 → 打开。'
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
+
+  web:
+    permissions:
+      contents: write
+    needs: tauri # 等 tauri job 建好 Release 再挂资产，避免建 Release 竞态
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Pack console web dist
+        run: |
+          VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          zip -rq "prism-console-web-v${VERSION}.zip" dist
+          echo "asset=prism-console-web-v${VERSION}.zip" >> "$GITHUB_ENV"
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.asset }}

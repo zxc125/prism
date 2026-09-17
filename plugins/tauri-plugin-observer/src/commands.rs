@@ -12,7 +12,7 @@ use crate::config::{Mode, ObserverConfig};
 use crate::session::Session;
 use crate::storage::{
     append_events_file, append_lifecycle, build_export_bundle, finalize_session, now_ms,
-    recordings_root, validate_session_id,
+    recordings_root_with, validate_session_id,
 };
 use crate::storage::list_sessions as storage_list_sessions;
 
@@ -46,7 +46,8 @@ fn session_meta_payload(
 pub fn start_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionState>) -> Result<String, String> {
     let id = format!("{}", now_ms());
     let started_at = now_ms();
-    let (mode, source, app_id) = {
+    // P20：第一段锁内整 clone config——下方解析落盘根在锁外，无法持 `&s.config`
+    let cfg = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.id = Some(id.clone());
         s.started_at = started_at;
@@ -55,19 +56,16 @@ pub fn start_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionStat
         s.current.clear();
         s.remote_session_id = None;
         s.dir = None;
-        (
-            s.config.mode,
-            s.config.source.clone(),
-            s.config.app_id.clone(),
-        )
+        s.config.clone()
     };
 
-    let dir = if mode == Mode::Local {
-        let dir = recordings_root(&app).join(&id);
+    let dir = if cfg.mode == Mode::Local {
+        let dir = recordings_root_with(&app, &cfg).join(&id);
         std::fs::create_dir_all(dir.join("segments")).map_err(|e| e.to_string())?;
         std::fs::write(
             dir.join("session.json"),
-            session_meta_payload(&source, app_id.as_deref(), &id, started_at, None).to_string(),
+            session_meta_payload(&cfg.source, cfg.app_id.as_deref(), &id, started_at, None)
+                .to_string(),
         )
         .map_err(|e| e.to_string())?;
         state.lock().map_err(|e| e.to_string())?.dir = Some(dir.clone());
@@ -259,16 +257,17 @@ fn ensure_local(config: &ObserverConfig) -> Result<(), String> {
     }
 }
 
-/// Local 模式：列出本应用 `appDataDir/recordings/` 下的会话元信息（不含事件流）。
-/// 与 console 自有 `list_sessions` 同源（observer-storage），供外部应用本地落盘后
-/// 自行选择会话导出（P16）。
+/// Local 模式：列出本应用 `<dir_base>/<dir_name>`（默认 `appDataDir/recordings/`，
+/// P20 可配）下的会话元信息（不含事件流）。与 console 自有 `list_sessions` 同源
+/// （observer-storage），供外部应用本地落盘后自行选择会话导出（P16）。
 #[tauri::command]
 pub fn list_sessions<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, SessionState>,
 ) -> Result<Vec<Value>, String> {
-    ensure_local(&state.lock().map_err(|e| e.to_string())?.config)?;
-    Ok(storage_list_sessions(&recordings_root(&app)))
+    let cfg = state.lock().map_err(|e| e.to_string())?.config.clone();
+    ensure_local(&cfg)?;
+    Ok(storage_list_sessions(&recordings_root_with(&app, &cfg)))
 }
 
 /// Local 模式：导出会话为 `prism-session` bundle（JSON，契约 version 1 不变，P16 D5）。
@@ -284,11 +283,12 @@ pub fn export_session<R: Runtime>(
     state: State<'_, SessionState>,
     session_id: String,
 ) -> Result<Value, String> {
-    ensure_local(&state.lock().map_err(|e| e.to_string())?.config)?;
+    let cfg = state.lock().map_err(|e| e.to_string())?.config.clone();
+    ensure_local(&cfg)?;
     if !validate_session_id(&session_id) {
         return Err(format!("invalid session id: {session_id}"));
     }
-    build_export_bundle(&recordings_root(&app).join(&session_id))
+    build_export_bundle(&recordings_root_with(&app, &cfg).join(&session_id))
 }
 
 /// bundle 序列化 + 原子写盘（`.tmp` + rename，P7 惯例）。独立纯函数便于单测
@@ -319,11 +319,12 @@ pub async fn export_session_to_file<R: Runtime>(
     session_id: String,
     path: String,
 ) -> Result<u64, String> {
-    ensure_local(&state.lock().map_err(|e| e.to_string())?.config)?;
+    let cfg = state.lock().map_err(|e| e.to_string())?.config.clone();
+    ensure_local(&cfg)?;
     if !validate_session_id(&session_id) {
         return Err(format!("invalid session id: {session_id}"));
     }
-    let dir = recordings_root(&app).join(&session_id);
+    let dir = recordings_root_with(&app, &cfg).join(&session_id);
     tauri::async_runtime::spawn_blocking(move || write_bundle_to_file(&dir, &path))
         .await
         .map_err(|e| e.to_string())?
@@ -339,6 +340,7 @@ pub fn notify_segment_start<R: Runtime>(app: AppHandle<R>, label: String) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::DirBase;
 
     #[test]
     fn session_meta_omits_app_id_and_ended_when_none() {
@@ -451,5 +453,36 @@ mod tests {
         // 失败不落任何文件（含 .tmp）
         assert!(!target.exists());
         assert!(!root.path().join("out.bundle.json.tmp").exists());
+    }
+
+    // ---- P20：落盘根配置（dir_base/dir_name） ----
+
+    #[test]
+    fn observer_config_default_uses_app_data() {
+        let cfg = ObserverConfig::default();
+        assert_eq!(cfg.dir_base, DirBase::AppData);
+        assert_eq!(cfg.dir_name, "recordings");
+    }
+
+    #[test]
+    fn observer_config_serde_backward_compat() {
+        // 存量宿主 JSON（无新字段）反序列化得默认值 = 现状行为（P20 D5）
+        let cfg: ObserverConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(cfg.dir_base, DirBase::AppData);
+        assert_eq!(cfg.dir_name, "recordings");
+    }
+
+    #[test]
+    fn dir_base_serde_camel_case() {
+        let cfg = ObserverConfig {
+            dir_base: DirBase::ResourceDir,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(json.contains("\"dirBase\":\"resourceDir\""), "{json}");
+        let back: ObserverConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.dir_base, DirBase::ResourceDir);
+        // 未知枚举值必须报错，不得静默吞成默认
+        assert!(serde_json::from_str::<ObserverConfig>("{\"dirBase\":\"nope\"}").is_err());
     }
 }

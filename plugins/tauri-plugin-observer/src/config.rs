@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
-    /// Rust 侧直接落盘到 `appDataDir/recordings/`。console self-obs 与外部应用
-    /// opt-in 本地落盘（P16）均用此模式。
+    /// Rust 侧直接落盘到 `<dir_base>/<dir_name>`（默认 `appDataDir/recordings/`，
+    /// P20 可配）。console self-obs 与外部应用 opt-in 本地落盘（P16）均用此模式。
     Local,
     /// Rust 侧只管窗口协调 + 状态 + 事件驱动，不落盘；前端 `HttpSink` 上报到 console。
     Remote,
@@ -19,12 +19,27 @@ impl Default for Mode {
     }
 }
 
+/// Local 模式落盘基目录（P20）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum DirBase {
+    /// `appDataDir`（默认，与 0.3.x 现状一致）。
+    #[default]
+    AppData,
+    /// 资源目录：Windows NSIS 安装布局下为主程序 exe 所在目录。
+    ResourceDir,
+}
+
 fn default_main_label() -> String {
     "main".to_string()
 }
 
 fn default_source() -> String {
     "self".to_string()
+}
+
+fn default_dir_name() -> String {
+    "recordings".to_string()
 }
 
 /// 插件配置。通过 [`crate::init_with`] 注入。
@@ -49,6 +64,12 @@ pub struct ObserverConfig {
     /// console 现网 session.json 形态一致）。默认 None。
     #[serde(default)]
     pub app_id: Option<String>,
+    /// Local 模式落盘基目录，默认 AppData（P20）。
+    #[serde(default)]
+    pub dir_base: DirBase,
+    /// 基目录下的子目录名，默认 `"recordings"`（P20）。
+    #[serde(default = "default_dir_name")]
+    pub dir_name: String,
 }
 
 impl Default for ObserverConfig {
@@ -59,6 +80,8 @@ impl Default for ObserverConfig {
             skip_focus_prefix: String::new(),
             source: default_source(),
             app_id: None,
+            dir_base: DirBase::AppData,
+            dir_name: default_dir_name(),
         }
     }
 }

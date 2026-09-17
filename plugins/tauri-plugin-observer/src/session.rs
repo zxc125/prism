@@ -10,7 +10,7 @@ pub struct Session {
     pub config: ObserverConfig,
     pub id: Option<String>,
     pub started_at: i64,
-    /// Local 模式：会话目录 `appDataDir/recordings/<id>/`。
+    /// Local 模式：会话目录 `<dir_base>/<dir_name>/<id>/`（`start_session` 按配置解析一次）。
     pub dir: Option<PathBuf>,
     pub active: bool,
     /// label -> 下一段序号（Local 模式生成 segmentId `<label>#<n>`）。

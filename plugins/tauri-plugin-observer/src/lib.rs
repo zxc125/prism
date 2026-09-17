@@ -3,8 +3,9 @@
 //! 把多窗口对齐录制逻辑（Session 状态、segment 分配、窗口 show/hide/focus 生命周期拦截）
 //! 抽成可复用插件，别的 Tauri 2 应用安装即得。两种部署模式：
 //!
-//! - [`Mode::Local`]：Rust 侧直接落盘到 `appDataDir/recordings/`。console self-obs 与
-//!   外部应用 opt-in 本地落盘（P16）均用此模式；`list_sessions`/`export_session`/
+//! - [`Mode::Local`]：Rust 侧直接落盘到 `<dir_base>/<dir_name>`（默认
+//!   `appDataDir/recordings/`，P20 可配）。console self-obs 与外部应用 opt-in 本地落盘
+//!   （P16）均用此模式；`list_sessions`/`export_session`/
 //!   `export_session_to_file`（P18）只读命令 Local 限定，导出 `prism-session` bundle
 //!   闭环回 console 导入回放。
 //! - [`Mode::Remote`]：Rust 侧只管窗口协调 + 状态 + 事件驱动，不落盘；
@@ -18,7 +19,7 @@ pub mod lifecycle;
 pub mod session;
 pub mod storage;
 
-pub use config::{Mode, ObserverConfig};
+pub use config::{DirBase, Mode, ObserverConfig};
 
 use serde_json::json;
 use tauri::plugin::{Builder, TauriPlugin};

@@ -87,6 +87,10 @@ pub fn run() {
 | `mode` | `Local` | 外部应用设 `Remote` |
 | `main_label` | `"main"` | 主窗口 label，其关闭 = 退出进程（不拦截为隐藏） |
 | `skip_focus_prefix` | `""` | 跳过 focus 记录的 label 前缀（如回放窗口） |
+| `source` | `"self"` | 写入 session.json 的 `source`；外部应用本地落盘建议 `"tauri"` |
+| `app_id` | `None` | 写入 session.json 的 `appId`；`None` 时省键（P16） |
+| `dir_base` | `AppData` | Local 落盘基目录：`AppData`（`appDataDir`）或 `ResourceDir`（资源目录，Windows NSIS 安装布局下为主程序 exe 所在目录）（P20） |
+| `dir_name` | `"recordings"` | 基目录下的子目录名（P20）；**切换落盘根不迁移历史会话**——旧根下的会话不再出现在 `listSessions`/导出中（数据不删） |
 
 ## JS 侧：`initTauri()`
 
@@ -116,7 +120,7 @@ await ctrl.stop();
 
 | 选项 | 类型 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- | --- |
-| `mode` | `"remote" \| "local"` | ➖ | `"remote"` | 部署模式：`"remote"` 经 HttpSink 上报 console；`"local"` 插件 Rust 直接落盘到本应用 `appDataDir/recordings/`（见下文「本地落盘」） |
+| `mode` | `"remote" \| "local"` | ➖ | `"remote"` | 部署模式：`"remote"` 经 HttpSink 上报 console；`"local"` 插件 Rust 直接落盘到本应用落盘根 `<dir_base>/<dir_name>`（默认 `appDataDir/recordings/`，见下文「本地落盘」） |
 | `appId` | `string` | ✅ | — | 应用标识，随会话上报，console 侧区分来源；local 模式下本地 session.json 的 source/appId 由 Rust 侧 `ObserverConfig` 决定 |
 | `endpoint` | `string` | ✅ | — | console 本地 HTTP server 地址，如 `http://127.0.0.1:1421`（remote 必填，local 忽略） |
 | `token` | `string` | ➖ | — | 本地鉴权 token；console 开启鉴权时必传 |
@@ -184,16 +188,23 @@ setInterval(() => {
 
 ### 本地落盘（Local 模式，P16）
 
-不想连 console server？`mode: "local"` 让插件 Rust 把事件流直接写到**本应用自己的** `appDataDir/recordings/`（目录结构与 console 同构），数据不离开本机。Rust 侧装插件时声明会话元数据：
+不想连 console server？`mode: "local"` 让插件 Rust 把事件流直接写到本应用落盘根 `<dir_base>/<dir_name>`（默认 `appDataDir/recordings/`，目录结构与 console 同构），数据不离开本机。Rust 侧装插件时声明会话元数据与落盘根：
 
 ```rust
 tauri_plugin_observer::init_with(tauri_plugin_observer::ObserverConfig {
     mode: tauri_plugin_observer::Mode::Local,
     source: "tauri".into(),               // 写入 session.json 的 source
     app_id: Some("my-tauri-app".into()),  // 写入 session.json 的 appId（None 省键）
+    // 落盘根 = <dir_base>/<dir_name>，默认 appDataDir/recordings（P20）：
+    // dir_base: tauri_plugin_observer::DirBase::ResourceDir,  // 落盘随安装目录（Windows NSIS 布局 = exe 所在目录）
+    // dir_name: "prism".into(),
     ..Default::default()
 })
 ```
+
+::: warning 切换落盘根不迁移
+`dir_base`/`dir_name` 进程期固定；改为非默认根后，旧 `appDataDir/recordings` 下的历史会话不再出现在 `listSessions()`/导出里（数据不删，改回默认根即恢复可见）。
+:::
 
 JS 侧 `initTauri({ mode: "local", appId, autoStart, ... })`（`endpoint` / `token` 忽略）。之后随时把会话闭环回 console：
 

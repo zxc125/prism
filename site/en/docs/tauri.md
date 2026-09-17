@@ -87,6 +87,10 @@ pub fn run() {
 | `mode` | `Local` | external apps set `Remote` |
 | `main_label` | `"main"` | main window label — closing it exits the process (never intercepted as hide) |
 | `skip_focus_prefix` | `""` | label prefix to skip focus recording for (e.g. player windows) |
+| `source` | `"self"` | written into session.json as `source`; `"tauri"` recommended for local-disk external apps |
+| `app_id` | `None` | written into session.json as `appId`; key omitted when `None` (P16) |
+| `dir_base` | `AppData` | Local disk base dir: `AppData` (`appDataDir`) or `ResourceDir` (resource dir — the main exe's directory under Windows NSIS installs) (P20) |
+| `dir_name` | `"recordings"` | subdirectory under the base dir (P20). **Switching the disk root does not migrate historical sessions** — sessions under the old root vanish from `listSessions`/export (data is kept) |
 
 ## JS: `initTauri()`
 
@@ -117,7 +121,7 @@ await ctrl.stop();
 
 | Option | Type | Required | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `mode` | `"remote" \| "local"` | ➖ | `"remote"` | deployment mode: `"remote"` reports to the console via HttpSink; `"local"` makes the plugin's Rust write straight to this app's `appDataDir/recordings/` (see "Local disk" below) |
+| `mode` | `"remote" \| "local"` | ➖ | `"remote"` | deployment mode: `"remote"` reports to the console via HttpSink; `"local"` makes the plugin's Rust write straight to this app's disk root `<dir_base>/<dir_name>` (default `appDataDir/recordings/`, see "Local disk" below) |
 | `appId` | `string` | ✅ | — | app identifier, reported with the session; in local mode the session.json source/appId come from the Rust-side `ObserverConfig` |
 | `endpoint` | `string` | ✅ | — | console local HTTP server, e.g. `http://127.0.0.1:1421` (required in remote mode, ignored in local) |
 | `token` | `string` | ➖ | — | local auth token; required when console auth is on |
@@ -186,16 +190,23 @@ A complete runnable sample: [`examples/tauri-demo`](https://github.com/zxc125/pr
 
 ### Local disk (Local mode, P16)
 
-Don't want to reach the console server? `mode: "local"` makes the plugin's Rust write the event streams straight into **this app's own** `appDataDir/recordings/` (same layout as the console); data never leaves the machine. Declare session metadata when installing the plugin on the Rust side:
+Don't want to reach the console server? `mode: "local"` makes the plugin's Rust write the event streams straight into this app's disk root `<dir_base>/<dir_name>` (default `appDataDir/recordings/`, same layout as the console); data never leaves the machine. Declare session metadata and the disk root when installing the plugin on the Rust side:
 
 ```rust
 tauri_plugin_observer::init_with(tauri_plugin_observer::ObserverConfig {
     mode: tauri_plugin_observer::Mode::Local,
     source: "tauri".into(),               // written into session.json as `source`
     app_id: Some("my-tauri-app".into()),  // written as `appId` (key omitted when None)
+    // disk root = <dir_base>/<dir_name>, default appDataDir/recordings (P20):
+    // dir_base: tauri_plugin_observer::DirBase::ResourceDir,  // disk follows the install dir (exe dir under Windows NSIS)
+    // dir_name: "prism".into(),
     ..Default::default()
 })
 ```
+
+::: warning Switching the disk root does not migrate
+`dir_base`/`dir_name` are fixed for the process lifetime; after switching to a non-default root, historical sessions under the old `appDataDir/recordings` no longer show up in `listSessions()`/export (data is kept — switch back to the default root to see them again).
+:::
 
 JS side: `initTauri({ mode: "local", appId, autoStart, ... })` (`endpoint` / `token` ignored). Close the loop back to the console any time:
 

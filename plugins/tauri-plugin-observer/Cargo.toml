@@ -1,6 +1,6 @@
 [package]
 name = "tauri-plugin-observer"
-version = "0.3.0"
+version = "0.4.0"
 description = "本地优先前端观测平台 · Tauri 多窗口录制协调插件"
 edition = "2021"
 license = "MIT"

@@ -45,9 +45,16 @@ export function fmtClock(ts?: number): string {
   return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** 会话时长：endedAt - startedAt，未结束用 now。 */
-export function sessionDur(s: SessionMeta): string {
-  return fmtDur((s.endedAt ?? Date.now()) - s.startedAt);
+/** 会话时长：仅已结束会话有值；未结束返回 null（P21 D4——展示层出「未结束」徽标，
+ * 废除 now 兜底：每次刷新渲染出增长的数值，与真实完成时长无区分，实证误导）。 */
+export function sessionDur(s: SessionMeta): string | null {
+  if (!s.endedAt) return null;
+  return fmtDur(s.endedAt - s.startedAt);
+}
+
+/** 会话是否未正常结束（无 endedAt：录中杀进程 / 关主窗口 / web 会话未调 end）。 */
+export function isSessionOpen(s: SessionMeta): boolean {
+  return !s.endedAt;
 }
 
 /** 字节格式化：B/KB/MB/GB（配额条用）。 */

@@ -112,7 +112,7 @@ const quotaPct = computed(() => {
           <StatusDot :color="`var(--src-${sourceOf(s)})`" :size="7" />
           <span class="ts-src mono">{{ SRC_LABEL[sourceOf(s)] }}</span>
           <span class="ts-time mono">{{ fmtClock(s.startedAt) }}</span>
-          <span class="ts-dur mono">{{ sessionDur(s) }}</span>
+          <span class="ts-dur mono">{{ sessionDur(s) ?? "—" }}</span>
           <span class="ts-id mono">{{ s.name || s.id }}</span>
         </div>
       </div>

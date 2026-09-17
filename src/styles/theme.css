@@ -87,6 +87,9 @@
 :root:root {
   color-scheme: dark;
 
+  /* type · EP 组件回接页面字体栈（P21 D7；缺此行 EP 走自带 Helvetica Neue 栈） */
+  --el-font-family: var(--font-sans);
+
   /* primary = amber signal */
   --el-color-primary: #F0A83D;
   --el-color-primary-light-3: #D4902F;
@@ -170,16 +173,6 @@
   --el-disabled-bg-color: var(--slate-2);
   --el-disabled-text-color: #3A4049;
   --el-disabled-border-color: var(--hair-soft);
-
-  /* table */
-  --el-table-bg-color: var(--slate);
-  --el-table-tr-bg-color: var(--slate);
-  --el-table-row-hover-bg-color: var(--slate-2);
-  --el-table-header-bg-color: var(--ink-2);
-  --el-table-header-text-color: var(--ash);
-  --el-table-text-color: var(--bone);
-  --el-table-border-color: var(--hair-soft);
-  --el-table-border: 1px solid var(--hair-soft);
 
   /* slider */
   --el-slider-main-bg-color: var(--amber);
@@ -302,20 +295,75 @@ body {
 .el-button.is-text { color: var(--ash); }
 .el-button.is-text:hover { color: var(--bone); background: var(--slate-2); }
 
-/* table - dense log readout */
-.el-table {
+/* table-v2 · dense channel ledger（P21 会话列表，取代无主的 el-table v1 nudge）
+   cellRenderer 输出无 scoped data-v，行内形态样式统一驻此处 */
+.sess-table {
+  --el-table-v2-border-color: transparent;
+  --el-table-v2-header-bg-color: transparent;
+  --el-table-v2-header-text-color: var(--ash-deep);
+  --el-table-v2-row-hover-bg-color: var(--slate);
+  --el-table-v2-row-bg-color: transparent;
   font-size: var(--fs-sm);
-  --el-table-header-font-weight: 500;
 }
-.el-table th.el-table__cell {
+.sess-table .el-table-v2__header-cell {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  letter-spacing: 0.10em;
+  font-size: 10px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   font-weight: 500;
-  background: var(--ink-2) !important;
+  color: var(--ash-deep);
 }
-.el-table .cell { padding-left: 12px; padding-right: 12px; }
+.sess-table .el-table-v2__row {
+  border-bottom: 1px solid var(--hair-soft);
+  transition: background 0.12s;
+}
+.sess-table .el-table-v2__cell { padding: 0 12px; }
+.st-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-xs);
+  color: var(--bone-dim);
+}
+.st-time { font-size: var(--fs-sm); color: var(--bone-dim); }
+.st-dur { font-size: var(--fs-sm); color: var(--ash); }
+.st-open {
+  font-size: 10px;
+  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+.st-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.st-name .mono {
+  min-width: 0;
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-name .is-named { color: var(--bone); }
+.st-name .st-id { color: var(--ash-deep); }
+.st-tag {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--src-tauri);
+  border: 1px solid color-mix(in srgb, var(--src-tauri) 40%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 0 5px;
+}
+.st-app { font-size: var(--fs-xs); color: var(--ash-deep); }
+.st-ops {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
 
 /* slider - slim, amber */
 .el-slider__runway { height: var(--el-slider-height); }

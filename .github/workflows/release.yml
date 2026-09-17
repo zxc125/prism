@@ -36,6 +36,9 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      # beforeBuildCommand = pnpm build（vue-tsc/vite），node_modules 必须先装
+      - run: pnpm install --frozen-lockfile
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
@@ -52,9 +55,11 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       # src-tauri/.cargo/config.toml 把 crates.io 重定向到 rsproxy（国内镜像）——
-      # 对境外 runner 慢且不稳；仅 CI 移除，仓库配置不动（CLAUDE.md 环境说明不受影响）
+      # 对境外 runner 慢且不稳；仅 CI 移除，仓库配置不动（CLAUDE.md 环境说明不受影响）。
+      # Windows runner 默认 PowerShell：rm -f 会被解析为 Remove-Item 歧义参数，显式走 bash
       - name: Bypass crates.io mirror (CI only)
         run: rm -f src-tauri/.cargo/config.toml
+        shell: bash
 
       - name: Build & upload installers
         uses: tauri-apps/tauri-action@v0

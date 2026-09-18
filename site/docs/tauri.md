@@ -2,7 +2,7 @@
 
 `tauri-plugin-observer`（Rust）+ `@prism-obs/observer-tauri`（JS）—— 给 Tauri 2 桌面应用装上**多窗口**录制协调，经 HTTP 上报到 console。
 
-> **适用版本**：`@prism-obs/observer-tauri` **0.5.x** / `tauri-plugin-observer` **0.3.x**。
+> **适用版本**：`@prism-obs/observer-tauri` **0.6.x**（依赖 `@prism-obs/observer-sdk` 0.4.x）/ `tauri-plugin-observer` **0.5.x**。
 
 **本页你将完成**：Rust 侧装插件 → JS 侧每个窗口调 `initTauri()` → capabilities 授权 → 多窗口跑通。前置：一个能跑的 Tauri 2 应用；console 已按 [快速开始](./quickstart) 跑通。
 
@@ -185,6 +185,28 @@ setInterval(() => {
 ::: tip 为什么需要门控
 `recording` 量控只控制「段开着时录什么」；**门控是空闲期零录制成本的唯一手段**（空闲期零观察、零序列化、零落盘）。高频渲染场景的完整打法见 [Web SDK 手册 · 高频渲染场景](./web#高频渲染场景)。
 :::
+
+### 会话级启停与用户归属（P22）
+
+默认会话边界是进程启动（`autoStart`）到退出。宿主想按自己的策略划会话——最典型是**登录~登出区间，会话归属到当前用户**——用 controller 的会话级方法：
+
+| 成员 | 作用 |
+| --- | --- |
+| `startSession(meta?)` | 启动新会话（幂等：已活跃先自动收口再开新会话）；`meta` 注入会话元数据 |
+| `stopSession()` | 结束当前会话；监听不销毁，进程内可再次 `startSession` |
+
+```ts
+// 登录成功：开一个归属到该用户的会话
+await ctrl.startSession({ user: { id: user.id, name: user.name } });
+// 登出：收口当前会话（Local 写 endedAt；Remote 广播停各窗 + 主窗上报会话结束）
+await ctrl.stopSession();
+```
+
+语义与规则：
+
+- **meta 保留键**：`id` / `startedAt` / `source` / `appId` 是平台身份字段，宿主 meta 不可覆盖；非 object meta 在 Local 模式会被 `startSession` 直接拒绝（Remote 由 TS 类型约束，服务端忽略非 object body）。`user` 形态为 `{ id, name? }`，建议只放 id + 姓名，勿带账号/手机号——`user` 明文写入 session.json（Local）或上报 body（Remote），入镜范围由宿主自审。
+- **与 `autoStart` 的关系**：改用 `startSession` 划界时主窗口可不传 `autoStart`，登录后再开会话；两者同用也不冲突（`startSession` 幂等收口）。
+- **幂等收口的广播窗口**：已活跃时 `startSession` 先停旧会话再开新会话，各窗口经历一次 `active:false→true`；`gating: "manual"` 宿主无感，默认档有一次 <100ms 的空段窗口（重启段快照），正常使用无感。
 
 ### 本地落盘（Local 模式，P16）
 

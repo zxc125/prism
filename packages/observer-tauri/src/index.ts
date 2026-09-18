@@ -73,6 +73,22 @@ export interface TauriController {
    * 广播 -> 主窗口 endSession 链路驱动）。
    */
   stop(): Promise<void>;
+  /**
+   * 会话级启动（P22 D5，幂等）：已活跃先 `stop_session` 收口（各窗经历一次
+   * `active:false→true` 广播；manual gating 宿主无感，默认 gating 有一次 <100ms
+   * 空段窗口）。`meta` 注入会话 meta：Local 由插件写入 session.json（基础键
+   * id/source/appId/startedAt 不可覆盖）；Remote 经 `HttpSink.startSession`
+   * merge 后随 `/ingest/session` body 上报。宿主以调用时机表达会话边界
+   * （如登录~登出区间）。
+   */
+  startSession(meta?: SessionMeta): Promise<void>;
+  /**
+   * 会话级停止（P22 D5，双模统一）：即 invoke `stop_session`——Local 写 endedAt
+   * （read-modify-write 只补 endedAt，start 期注入的 user 等宿主字段天然保留）；
+   * Remote 清态 + 广播（主窗 endSession 由既有监听驱动）。不 unlisten、不销毁——
+   * 进程内可再次 `startSession`。
+   */
+  stopSession(): Promise<void>;
   /** 当前段是否活跃（P17）：宿主门控策略的判据（如空闲异常兜底只在段未活跃时注入）。 */
   readonly active: boolean;
   /** 仅 Local 模式可用（remote 抛错）：列出本应用本地会话元信息。 */
@@ -177,6 +193,9 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
           // manual 门控（P17）：会话活跃只置态/绑 sessionId，段由宿主策略开
           if (!manualGating) await startSegment();
         } else {
+          // P22 D6a：重置一次性守卫，下一会话的 bind_session 广播才能被各窗重新
+          // 消费——否则段事件继续上报已 endSession 的旧 sessionId
+          sessionBound = false;
           await stopSegment(false);
           if (isMain && !local) await sink.endSession();
         }
@@ -271,6 +290,28 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
           console.error("[observer-tauri] stop_session failed", e);
         }
       }
+    },
+    // 会话级启停（P22 D5）：不 unlisten、不销毁，监听链跨会话复用。startSession 幂等
+    // 收口借插件的 is_recording_active/stop_session（双模统一）；remote 分支先置
+    // sessionBound 再 bind 广播（本窗已绑，广播回来被 !sessionBound 守卫跳过）。
+    async startSession(meta?: SessionMeta) {
+      if (await invoke<boolean>("plugin:observer|is_recording_active")) {
+        await invoke("plugin:observer|stop_session");
+      }
+      if (local) {
+        // Rust 建目录/写 meta（merged_meta 保留键保护）/广播，各窗自启段
+        await invoke("plugin:observer|start_session", { meta });
+      } else {
+        const sid = await sink.startSession(meta);
+        httpSink?.useSessionId(sid);
+        sessionBound = true;
+        await invoke("plugin:observer|bind_session", { sessionId: sid });
+      }
+    },
+    async stopSession() {
+      // 双模同一 invoke：Local 写 endedAt；Remote 清态 + 广播
+      // （主窗 endSession 由既有 recording-session{active:false} 监听驱动）。
+      await invoke("plugin:observer|stop_session");
     },
     async listSessions() {
       if (!local) throw new Error("[observer-tauri] listSessions 仅 Local 模式可用");

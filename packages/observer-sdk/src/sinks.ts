@@ -85,12 +85,21 @@ export class HttpSink implements Sink {
   }
 
   async endSession(): Promise<void> {
-    await this.flush();
+    // 进入即捕获并解绑（P22 回归修复）：封口目标锁定为本会话——controller 幂等
+    // startSession 收口时，监听驱动的 endSession 与续体的 startSession 并发，若读到
+    // 已重绑的 sessionId 会把 end 标记/残留缓冲打到新会话。解绑后重复 end 幂等 no-op，
+    // 后续 startSession/useSessionId 正常重绑。
+    const sid = this.sessionId;
+    if (!sid) return;
+    this.sessionId = null;
+    // 定时器随解绑即清（flush 无 target 只会空转）：留在 post 之后会误杀并发
+    // useSessionId/startSession 刚为新会话启动的定时器（startAutoFlush 见定时器在即早退）
+    this.stopAutoFlush();
+    await this.flush(sid);
     await this.post("/ingest/session/end", {
-      sessionId: this.sessionId,
+      sessionId: sid,
       endedAt: Date.now(),
     });
-    this.stopAutoFlush();
   }
 
   async isRecordingActive(): Promise<boolean> {
@@ -117,15 +126,15 @@ export class HttpSink implements Sink {
     }
   }
 
-  /** flush 所有缓冲事件；失败放回队列，下次重试。 */
-  async flush(): Promise<void> {
-    if (!this.buffer.size || !this.sessionId) return;
+  /** flush 所有缓冲事件；失败放回队列，下次重试。`target` 缺省当前 sessionId（封口路径显式传旧 sid，P22）。 */
+  async flush(target: string | null = this.sessionId): Promise<void> {
+    if (!this.buffer.size || !target) return;
     const batch = this.buffer;
     this.buffer = new Map();
     for (const [segmentId, events] of batch) {
       try {
         await this.post("/ingest/events", {
-          sessionId: this.sessionId,
+          sessionId: target,
           segmentId,
           events,
         });

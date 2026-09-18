@@ -18,8 +18,8 @@ use crate::storage::list_sessions as storage_list_sessions;
 
 type SessionState = Mutex<Session>;
 
-/// session.json 内容组装（start/stop 共用）。`app_id` 为 None 时省键（P16 D9，与
-/// console 现网 session.json 形态一致）；`ended_at` 供 stop 覆写回填。
+/// session.json 内容组装（P22 起 start 专用；stop 走 `finalize_session` 只补 endedAt，
+/// 不再经此重建）。`app_id` 为 None 时省键（P16 D9，与 console 现网 session.json 形态一致）。
 fn session_meta_payload(
     source: &str,
     app_id: Option<&str>,
@@ -40,10 +40,35 @@ fn session_meta_payload(
     Value::Object(m)
 }
 
-/// Local：建目录、置 active、补记初始 focus、广播 `recording-session{active:true,id}`。
-/// Remote：仅置 active（会话目录由前端 HttpSink 在 console server 侧建），等 [`bind_session`] 绑定 sessionId 后广播。
+/// 宿主 meta 合并进 session.json 载荷（P22 D3 保留键保护）：extra 逐键并入后**再插
+/// 基础键**——id/source/appId/startedAt 是平台身份字段，宿主不可覆盖。extra 非 object
+/// 报 Err（防呆）；`null` 视同 None（JS `invoke(..., { meta: null })` 反序列化为
+/// `Some(Value::Null)`，不应误报）。
+fn merged_meta(base: Value, extra: Option<&Value>) -> Result<Value, String> {
+    let mut m = match extra {
+        None | Some(Value::Null) => serde_json::Map::new(),
+        Some(Value::Object(map)) => map.clone(),
+        Some(_) => return Err("observer: session meta must be a JSON object".into()),
+    };
+    if let Value::Object(base_map) = base {
+        for (k, v) in base_map {
+            m.insert(k, v);
+        }
+    }
+    Ok(Value::Object(m))
+}
+
+/// Local：建目录、写 session.json（宿主 `meta` 经 [`merged_meta`] 合并，P22）、置 active、
+/// 补记初始 focus、广播 `recording-session{active:true,id}`。
+/// Remote：仅置 active（会话目录由前端 HttpSink 在 console server 侧建），等 [`bind_session`]
+/// 绑定 sessionId 后广播；`meta` 由前端随 `/ingest/session` body 上报，此处忽略。
+/// `meta` 为 Option（P22 D1）：缺省 None = 存量调用零 diff。
 #[tauri::command]
-pub fn start_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionState>) -> Result<String, String> {
+pub fn start_session<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, SessionState>,
+    meta: Option<Value>,
+) -> Result<String, String> {
     let id = format!("{}", now_ms());
     let started_at = now_ms();
     // P20：第一段锁内整 clone config——下方解析落盘根在锁外，无法持 `&s.config`
@@ -60,14 +85,15 @@ pub fn start_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionStat
     };
 
     let dir = if cfg.mode == Mode::Local {
+        // meta 合并在建目录前：非 object 宿主 meta 干净失败，不留半目录（P22）
+        let payload = merged_meta(
+            session_meta_payload(&cfg.source, cfg.app_id.as_deref(), &id, started_at, None),
+            meta.as_ref(),
+        )?;
         let dir = recordings_root_with(&app, &cfg).join(&id);
         std::fs::create_dir_all(dir.join("segments")).map_err(|e| e.to_string())?;
-        std::fs::write(
-            dir.join("session.json"),
-            session_meta_payload(&cfg.source, cfg.app_id.as_deref(), &id, started_at, None)
-                .to_string(),
-        )
-        .map_err(|e| e.to_string())?;
+        std::fs::write(dir.join("session.json"), payload.to_string())
+            .map_err(|e| e.to_string())?;
         state.lock().map_err(|e| e.to_string())?.dir = Some(dir.clone());
         Some(dir)
     } else {
@@ -132,11 +158,13 @@ pub fn session_id(state: State<'_, SessionState>) -> Result<Option<String>, Stri
         .clone())
 }
 
-/// 停止会话。Local：关闭活跃段记 hidden、写 endedAt。Remote：清 sessionId。
+/// 停止会话。Local：关闭活跃段记 hidden、`finalize_session` 只补 endedAt（P22 D2：
+/// read-modify-write，宿主在 start 期注入的 user 等字段与 console `update_session_meta`
+/// 写入的 name/note/tags 天然保留；旧实现整文件重建会全部冲掉）。Remote：清 sessionId。
 /// 两者都广播 `recording-session{active:false}`。
 #[tauri::command]
 pub fn stop_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionState>) -> Result<(), String> {
-    let (dir, id, started_at, mode, source, app_id) = {
+    let (dir, mode) = {
         let mut s = state.lock().map_err(|e| e.to_string())?;
         s.active = false;
         s.remote_session_id = None;
@@ -150,28 +178,14 @@ pub fn stop_session<R: Runtime>(app: AppHandle<R>, state: State<'_, SessionState
                 );
             }
         }
-        (
-            s.dir.clone(),
-            s.id.clone(),
-            s.started_at,
-            s.config.mode,
-            s.config.source.clone(),
-            s.config.app_id.clone(),
-        )
+        (s.dir.clone(), s.config.mode)
     };
     if mode == Mode::Local {
         if let Some(dir) = dir {
-            let ended_at = now_ms();
-            let _ = finalize_session(&dir, ended_at);
-            // 与原 console 行为一致：写回含 endedAt 的 session.json（失败不致命）
-            let meta = session_meta_payload(
-                &source,
-                app_id.as_deref(),
-                id.as_deref().unwrap_or(""),
-                started_at,
-                Some(ended_at),
-            );
-            let _ = std::fs::write(dir.join("session.json"), meta.to_string());
+            // finalize_session 即 read-modify-write 只补 endedAt（storage.rs），等价于方案
+            // §4.1 的 merge_session_meta 而少一轮文件读写。session.json 由 start 必建，
+            // 缺失时失败 best-effort（与原写回同级容忍）。
+            let _ = finalize_session(&dir, now_ms());
         }
     }
     app.emit("recording-session", json!({ "active": false }))
@@ -358,19 +372,54 @@ mod tests {
         assert_eq!(v["endedAt"], 2000);
     }
 
+    // ---- P22：宿主 meta 注入（merged_meta） ----
+
     #[test]
-    fn stop_overwrite_keeps_app_id() {
-        // 关键陷阱：stop_session 整文件覆写不得冲掉 appId/source
-        let start = session_meta_payload("tauri", Some("demo"), "123", 1000, None);
-        let end = session_meta_payload(
-            "tauri",
-            Some("demo"),
-            "123",
-            start["startedAt"].as_i64().unwrap(),
-            Some(2000),
-        );
-        assert_eq!(end["appId"], start["appId"]);
-        assert_eq!(end["source"], start["source"]);
+    fn merged_meta_merges_user() {
+        let base = session_meta_payload("tauri", Some("demo"), "123", 1000, None);
+        let merged = merged_meta(base, Some(&json!({ "user": { "id": "u1", "name": "阿真" } })))
+            .unwrap();
+        assert_eq!(merged["user"]["id"], "u1");
+        assert_eq!(merged["user"]["name"], "阿真");
+        // 基础键齐全
+        assert_eq!(merged["id"], "123");
+        assert_eq!(merged["source"], "tauri");
+        assert_eq!(merged["appId"], "demo");
+        assert_eq!(merged["startedAt"], 1000);
+    }
+
+    #[test]
+    fn merged_meta_base_keys_win() {
+        // D3 保留键保护：宿主 meta 不得覆盖平台身份键（先 merge extra 后插基础键）
+        let base = session_meta_payload("tauri", Some("demo"), "123", 1000, None);
+        let merged = merged_meta(
+            base,
+            Some(&json!({
+                "id": "fake",
+                "startedAt": 0,
+                "source": "web",
+                "appId": "evil",
+                "user": { "id": "u1" }
+            })),
+        )
+        .unwrap();
+        assert_eq!(merged["id"], "123");
+        assert_eq!(merged["startedAt"], 1000);
+        assert_eq!(merged["source"], "tauri");
+        assert_eq!(merged["appId"], "demo");
+        // 非保留键照常并入
+        assert_eq!(merged["user"]["id"], "u1");
+    }
+
+    #[test]
+    fn merged_meta_rejects_non_object() {
+        let base = session_meta_payload("tauri", None, "123", 1000, None);
+        assert!(merged_meta(base.clone(), Some(&json!("str"))).is_err());
+        assert!(merged_meta(base.clone(), Some(&json!([1, 2]))).is_err());
+        assert!(merged_meta(base.clone(), Some(&json!(42))).is_err());
+        // null 视同 None：原样返回 base（appId None 省键不变）
+        assert_eq!(merged_meta(base.clone(), None).unwrap(), base);
+        assert_eq!(merged_meta(base.clone(), Some(&Value::Null)).unwrap(), base);
     }
 
     #[test]

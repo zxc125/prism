@@ -21,6 +21,8 @@ export interface SessionMeta {
   endedAt?: number;
   source?: Source;
   appId?: string;
+  /** 会话归属用户（P22）：宿主 startSession 注入，仅外部 tauri/web 会话可能有。 */
+  user?: { id: string; name?: string };
   name?: string;
   note?: string;
   tags?: string[];

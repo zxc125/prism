@@ -4,6 +4,12 @@ export type RREvent = { timestamp: number } & Record<string, unknown>;
 /** 会话来源：本机自录 / web SDK / tauri plugin。 */
 export type Source = "self" | "web" | "tauri";
 
+/** 宿主注入的会话归属用户（P22）。建议仅 id + 姓名，不带账号/手机号等敏感字段。 */
+export interface SessionUserInfo {
+  id: string;
+  name?: string;
+}
+
 export interface SessionMeta {
   source?: Source;
   appId?: string;
@@ -12,6 +18,8 @@ export interface SessionMeta {
   userAgent?: string;
   viewport?: string;
   url?: string;
+  /** 会话归属用户（P22）：会话级 `startSession(meta)` 注入，Local 写入 session.json / Remote 随 `/ingest/session` body 上报。 */
+  user?: SessionUserInfo;
 }
 
 export interface LifecycleEvent {

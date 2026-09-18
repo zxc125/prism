@@ -40,11 +40,12 @@
   "userAgent": "...",
   "viewport": "1920x1080",
   "url": "https://...",
+  "user": { "id": "u1", "name": "阿真" },
   "importedAt": 1750000006000
 }
 ```
 
-- `id`/`startedAt` 必填；`endedAt`/`source`/`appId`/... 可选。
+- `id`/`startedAt` 必填；`endedAt`/`source`/`appId`/... 可选；`user`（P22）为宿主注入的会话归属 `{ id, name? }` 可选字段（加可选字段不 bump version）。
 - 导入时 `id` 由接收方重新分配（避免冲突），原 id 被覆盖；`importedAt` 打戳。
 
 ## windows 行

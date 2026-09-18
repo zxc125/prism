@@ -2,7 +2,7 @@
 
 `tauri-plugin-observer` (Rust) + `@prism-obs/observer-tauri` (JS) — add **multi-window** recording coordination to a Tauri 2 desktop app, reporting to the console over HTTP.
 
-> **Applies to**: `@prism-obs/observer-tauri` **0.5.x** / `tauri-plugin-observer` **0.3.x**.
+> **Applies to**: `@prism-obs/observer-tauri` **0.6.x** (depends on `@prism-obs/observer-sdk` 0.4.x) / `tauri-plugin-observer` **0.5.x**.
 
 **In this page**: register the plugin on the Rust side → call `initTauri()` in every window → grant capabilities → run multi-window. Prerequisite: a working Tauri 2 app; the console running per [Quick Start](./quickstart).
 
@@ -187,6 +187,28 @@ A complete runnable sample: [`examples/tauri-demo`](https://github.com/zxc125/pr
 ::: tip Why gating
 `recording` tuning only controls **what gets recorded while a segment is open**; gating is the only way to make idle time cost nothing (no observing, no serialization, no writes). For hot-rendering pages see the [Web SDK manual · High-frequency rendering](./web#high-frequency-rendering).
 :::
+
+### Session-level start/stop and user attribution (P22)
+
+By default a session spans process start (`autoStart`) to exit. When the host wants to draw session boundaries itself — most typically a **login~logout interval, attributing the session to the signed-in user** — use the controller's session-level methods:
+
+| Member | Role |
+| --- | --- |
+| `startSession(meta?)` | Start a new session (idempotent: an active one is closed out first); `meta` injects session metadata |
+| `stopSession()` | End the current session; listeners stay alive — `startSession` can be called again in the same process |
+
+```ts
+// Login: open a session attributed to this user
+await ctrl.startSession({ user: { id: user.id, name: user.name } });
+// Logout: close the session (Local writes endedAt; Remote broadcasts stop to every window)
+await ctrl.stopSession();
+```
+
+Semantics and rules:
+
+- **Reserved meta keys**: `id` / `startedAt` / `source` / `appId` are platform identity fields; host meta cannot override them. Non-object meta is rejected outright by `startSession` in Local mode (Remote relies on TS typing; the server ignores a non-object body). `user` is `{ id, name? }` — keep it to id + name, no account/phone numbers: `user` is stored in plaintext in session.json (Local) or the report body (Remote), so what goes in is the host's call.
+- **Relation to `autoStart`**: to draw boundaries with `startSession`, omit `autoStart` on the main window and open the session after login; combining both is fine too (`startSession` closes out first).
+- **Broadcast window on idempotent start**: when already active, `startSession` stops the old session first, so every window sees one `active:false→true`; hosts on `gating: "manual"` notice nothing, default gating sees a <100ms empty-segment window (fresh segment snapshot).
 
 ### Local disk (Local mode, P16)
 

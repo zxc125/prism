@@ -358,6 +358,8 @@ body {
   padding: 0 5px;
 }
 .st-app { font-size: var(--fs-xs); color: var(--ash-deep); }
+.st-user { font-size: var(--fs-xs); color: var(--ash); }
+.st-user.is-id { color: var(--ash-deep); }
 .st-ops {
   display: inline-flex;
   align-items: center;

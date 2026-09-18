@@ -1,6 +1,6 @@
 {
   "name": "@prism-obs/observer-sdk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "本地优先前端观测平台 · Web 采集 SDK",
   "type": "module",
   "main": "./dist/index.js",

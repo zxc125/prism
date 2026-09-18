@@ -318,6 +318,26 @@ const columns: Column[] = [
     },
   },
   {
+    key: "user",
+    dataKey: "user",
+    title: "用户",
+    width: 110,
+    cellRenderer: ({ rowData }) => {
+      const u = (rowData as SessionMeta).user;
+      // EP CellRenderer 不收 null：无 user 渲染空 span（留空，与 App 列空值一致）
+      if (!u) return h("span", { class: "st-user" });
+      // 人名走 sans（等宽仅限时间码/ID/技术值）；无 name 退化 id 归技术值走 mono
+      return h(
+        "span",
+        {
+          class: u.name ? "st-user" : "mono st-user is-id",
+          title: u.name ? `${u.name} · ${u.id}` : u.id,
+        },
+        u.name || u.id,
+      );
+    },
+  },
+  {
     key: "app",
     dataKey: "appId",
     title: "App",

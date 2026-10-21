@@ -8,8 +8,8 @@
 | --- | --- | --- | --- |
 | npm | `@prism-obs/observer-sdk` | 0.4.0 | 外部 Web 应用采集（P17 起 `signal()` 注入 + flush 串行化；P22 起 `SessionMeta.user` 会话归属 + endSession 捕获即解绑） |
 | npm | `@prism-obs/observer-tauri` | 0.6.0 | 外部 Tauri 应用 JS 驱动（P16 双模式；P17 起手动档 controller `startSegment`/`stopSegment`/`signal`/`active` + `gating: "manual"`；P18 起 `exportSessionToFile` 插件直写落盘；P22 起 controller `startSession(meta)`/`stopSession` 会话级启停） |
-| crates.io | `observer-storage` | 0.1.0 | 存储层（plugin 的传递依赖） |
-| crates.io | `tauri-plugin-observer` | 0.5.0 | 外部 Tauri 应用 Rust 协调插件（P16 起 Local 泛化 + list/export 只读命令；P17 起 `append_events` async 化脱主线程，0.2.2 补 `export_session` 同类遗漏；P18 起新增 `export_session_to_file` 插件代执行落盘；P20 起落盘根可配 `dir_base`/`dir_name` + `recordings_root_with`；P22 起 `start_session(meta)` 宿主 meta 注入 + stop 只补 endedAt） |
+| crates.io | `observer-storage` | 0.2.0 | 存储层（plugin 的传递依赖）。0.2.0 分两批增量：①P19 六个读路径 API（`read_session_meta`/`read_segment_json`/`read_session_signals_json`/`read_segment_first_line`/`read_segment_last_line`/`segment_path`——git main 自 2026-09-10 已有、registry 0.1.0 缺，本次搭车发布）；②P23 `enforce_retention_protect`（protect 名单变体 + `orphan_max_age_days` 孤儿维 + 删除纪律：`Some(0)` 防呆 / `validate_session_id` 前置 / 实际成功计数）+ `RetentionPolicy` 新字段 |
+| crates.io | `tauri-plugin-observer` | 0.6.0 | 外部 Tauri 应用 Rust 协调插件（P16 起 Local 泛化 + list/export 只读命令；P17 起 `append_events` async 化脱主线程，0.2.2 补 `export_session` 同类遗漏；P18 起新增 `export_session_to_file` 插件代执行落盘；P20 起落盘根可配 `dir_base`/`dir_name` + `recordings_root_with`；P22 起 `start_session(meta)` 宿主 meta 注入 + stop 只补 endedAt；P23 起 `ObserverConfig.retention` 保留策略自动清扫线程（30s/1h·catch_unwind·活跃会话豁免）+ 根 re-export `RetentionPolicy`） |
 
 **不发布**：`src-tauri/app`（主应用——桌面客户端与 console web 走 GitHub Releases 分发，见下节）、`examples/*`（示例）、`site`（官网）、`crates/observer-server`（自托管二进制，暂不发，见「未做」）。
 

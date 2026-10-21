@@ -1,6 +1,6 @@
 [package]
 name = "tauri-plugin-observer"
-version = "0.5.0"
+version = "0.6.0"
 description = "本地优先前端观测平台 · Tauri 多窗口录制协调插件"
 edition = "2021"
 license = "MIT"
@@ -19,7 +19,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # 纯存储层（落盘 + bundle）抽成独立 crate，与 observer-server 共用
 # version+path 双指定：path 供 monorepo 本地开发，version 供 crates.io 发布解析
-observer-storage = { version = "0.1.0", path = "../../crates/observer-storage" }
+observer-storage = { version = "0.2.0", path = "../../crates/observer-storage" }
 
 [build-dependencies]
 tauri-plugin = { version = "2", features = ["build"] }

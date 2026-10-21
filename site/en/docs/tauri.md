@@ -243,6 +243,35 @@ const bytes = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json")
 
 **Hot-switch the endpoint**: store endpoint/token in localStorage, provide a config UI, reload to re-init (local server ↔ cloud observer-server). [examples/tauri-demo](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) ships a ready-made config UI you can copy.
 
+### Retention (auto cleanup, P23)
+
+Local disk keeps sessions forever by default. Declare `retention` on the Rust side to enable background auto-cleanup (type `tauri_plugin_observer::RetentionPolicy`, re-exported from the plugin crate root): the first sweep runs 30s after startup, then every 1h; the **currently active session is always exempt** (legitimately long-lived host sessions are unaffected), and a session participates in eviction as soon as it is closed.
+
+```rust
+tauri_plugin_observer::init_with(tauri_plugin_observer::ObserverConfig {
+    mode: tauri_plugin_observer::Mode::Local,
+    retention: tauri_plugin_observer::RetentionPolicy {
+        max_age_days: Some(30),        // clean closed sessions whose endedAt is older than 30 days
+        max_sessions: None,            // no cap by count
+        orphan_max_age_days: Some(30), // clean orphan sessions with no endedAt and startedAt older than 30 days
+        ..Default::default()
+    },
+    ..Default::default()
+})
+```
+
+| Field | Criterion | Notes |
+| --- | --- | --- |
+| `max_age_days` | `endedAt` over age | only touches closed sessions; open ones are not on this path |
+| `orphan_max_age_days` | no `endedAt` and `startedAt` over age | covers orphans from crashes / force kills / quitting without logout |
+| `max_sessions` | keep the newest N by `startedAt` | active (protected) sessions don't consume quota |
+
+::: danger The first sweep deletes existing data
+Within **30 seconds of the first startup** after declaring a policy, historical sessions under the disk root are deleted per the policy — including pre-upgrade ownerless sessions and user annotations (`annotations.jsonl` is removed together with the session directory). This is unrecoverable: export long-lived sessions with `exportSession()` first. `Some(0)` is always treated as `None` (typo guard). Sweeping only touches the current disk root (old roots are left alone after a root switch, see above). Remote mode and hosts that don't declare a policy start no sweeper and see zero behavior change.
+:::
+
+The sweeper thread and the console's embedded-server retention operate on the **same disk root**: a stock console (no plugin `retention` declared) runs only the server sweeper (every 10min); an external host that declares a policy runs only this plugin sweeper (every 1h); if the console ever declares plugin `retention`, two independent policies will clean the same directory — both idempotent delete-only with no lock contention, but the combined policy is the host's call.
+
 ## Capabilities
 
 ::: danger Every window label must be listed in capabilities

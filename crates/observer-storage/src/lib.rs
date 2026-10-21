@@ -21,7 +21,7 @@ pub use bundle::{
     BUNDLE_VERSION,
 };
 pub use redact::{redact_bundle, RedactConfig, RedactOpts};
-pub use retention::{enforce_retention, RetentionPolicy};
+pub use retention::{enforce_retention, enforce_retention_protect, RetentionPolicy};
 pub use storage::{
     append_events_file, append_events_file_with, append_lifecycle, create_session, finalize_session,
     now_ms, read_segment_events, read_segment_first_line, read_segment_last_line,

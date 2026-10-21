@@ -1,6 +1,6 @@
 [package]
 name = "observer-storage"
-version = "0.1.0"
+version = "0.2.0"
 description = "本地优先前端观测平台 · 纯存储层（落盘 + annotations + bundle 契约）"
 edition = "2021"
 license = "MIT"

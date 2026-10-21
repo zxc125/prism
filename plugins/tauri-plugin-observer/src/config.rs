@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use observer_storage::RetentionPolicy;
+
 /// 部署模式：Rust 落盘（console 自录 / 外部应用 opt-in 本地落盘）或仅协调（外部应用走 HTTP 上报）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -70,6 +72,11 @@ pub struct ObserverConfig {
     /// 基目录下的子目录名，默认 `"recordings"`（P20）。
     #[serde(default = "default_dir_name")]
     pub dir_name: String,
+    /// Local 模式落盘保留策略（P23）；缺省 = 三维均 None = 不清扫（现状）。
+    /// 声明策略即授权插件后台自动清理（opt-in）；`orphan_max_age_days` 覆盖
+    /// 崩溃/强杀/未登出直接退出产生的无 endedAt 会话，活跃会话始终豁免。
+    #[serde(default)]
+    pub retention: RetentionPolicy,
 }
 
 impl Default for ObserverConfig {
@@ -82,6 +89,40 @@ impl Default for ObserverConfig {
             app_id: None,
             dir_base: DirBase::AppData,
             dir_name: default_dir_name(),
+            retention: RetentionPolicy::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 存量序列化往返兼容：缺 retention 键反序列化得空策略（零行为变化）。
+    #[test]
+    fn missing_retention_defaults_to_empty() {
+        let cfg: ObserverConfig = serde_json::from_str("{}").unwrap();
+        assert!(cfg.retention.is_empty());
+        assert_eq!(cfg.retention, RetentionPolicy::default());
+    }
+
+    /// camelCase 全字段往返：宿主声明策略后 serde 形态稳定。
+    #[test]
+    fn retention_roundtrip_camel_case() {
+        let cfg = ObserverConfig {
+            retention: RetentionPolicy {
+                max_age_days: Some(30),
+                max_sessions: None,
+                orphan_max_age_days: Some(30),
+            },
+            ..Default::default()
+        };
+        let s = serde_json::to_string(&cfg).unwrap();
+        assert!(s.contains("\"retention\":{\"maxAgeDays\":30"));
+        assert!(s.contains("\"orphanMaxAgeDays\":30"));
+        let back: ObserverConfig = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.retention.max_age_days, Some(30));
+        assert_eq!(back.retention.orphan_max_age_days, Some(30));
+        assert_eq!(back.retention.max_sessions, None);
     }
 }

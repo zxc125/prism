@@ -4,7 +4,7 @@
 
 ## 两种模式
 
-- **Local**（console 自录 / 外部应用 opt-in 本地落盘）：Rust 直接落盘到 `<dir_base>/<dir_name>`——默认 `appDataDir/recordings/`；`ObserverConfig.dir_base`（`AppData`/`ResourceDir`）+ `dir_name`（默认 `"recordings"`）可配（P20，切根不迁移历史会话）
+- **Local**（console 自录 / 外部应用 opt-in 本地落盘）：Rust 直接落盘到 `<dir_base>/<dir_name>`——默认 `appDataDir/recordings/`；`ObserverConfig.dir_base`（`AppData`/`ResourceDir`）+ `dir_name`（默认 `"recordings"`）可配（P20，切根不迁移历史会话）；`retention` 保留策略自动清理可配（P23，缺省不清扫，活跃会话豁免）
 - **Remote**（外部 Tauri 应用）：Rust 只协调窗口 + 事件驱动，前端经 `HttpSink`（[`@prism-obs/observer-tauri`](https://www.npmjs.com/package/@prism-obs/observer-tauri)）上报到 console server
 
 ## 安装（外部 Tauri 应用）

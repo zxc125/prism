@@ -240,6 +240,35 @@ const bytes = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json")
 
 **上报地址热切**：endpoint / token 可存 localStorage，提供配置 UI 切换后 reload 即可（本地 server ↔ 云端 observer-server 自由切）。[examples/tauri-demo](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) 里有现成的配置 UI 可抄。
 
+### 保留策略（retention 自动清理，P23）
+
+Local 落盘默认永久保留。Rust 侧声明 `retention` 即启用后台自动清理（类型 `tauri_plugin_observer::RetentionPolicy`，插件 crate 根已 re-export）：首跑在启动 30s 后、之后每 1h 一轮；**当前活跃会话始终豁免**（宿主合法长活会话不受影响），刚收口的会话立即按策略参与淘汰。
+
+```rust
+tauri_plugin_observer::init_with(tauri_plugin_observer::ObserverConfig {
+    mode: tauri_plugin_observer::Mode::Local,
+    retention: tauri_plugin_observer::RetentionPolicy {
+        max_age_days: Some(30),        // endedAt 超 30 天的已收口会话清理
+        max_sessions: None,            // 不按条数封顶
+        orphan_max_age_days: Some(30), // 无 endedAt 且 startedAt 超 30 天的孤儿会话清理
+        ..Default::default()
+    },
+    ..Default::default()
+})
+```
+
+| 字段 | 判据 | 说明 |
+| --- | --- | --- |
+| `max_age_days` | `endedAt` 超龄 | 只清已收口会话；未结束的不在此路径 |
+| `orphan_max_age_days` | 无 `endedAt` 且 `startedAt` 超龄 | 覆盖崩溃/强杀/未登出直接退出产生的无收口会话 |
+| `max_sessions` | 按 `startedAt` 倒序保留 N 条 | 活跃（受保护）会话不占名额 |
+
+::: danger 策略生效首启即删存量
+声明策略后**首次启动 30 秒内**即按策略删除落盘根下的历史会话——含升级前落盘的无主会话与用户标注（`annotations.jsonl` 随会话目录连带删除），不可恢复。需长期保留的会话先 `exportSession()` 导出 bundle。`Some(0)` 一律视同 `None`（防呆）。清扫只作用于当前落盘根（切根后旧根不清，见上文）。Remote 模式与未声明策略的宿主不启动清扫、零行为变化。
+:::
+
+清扫线程与 console 内嵌 server 的保留策略作用于**同一落盘根**：原装 console（不声明插件 `retention`）只运行 server 一条清扫（10min 周期）；外部宿主声明策略后只运行插件这一条（1h 周期）；若 console 未来声明插件 `retention`，两条独立策略将清同一目录——均幂等只删、无锁冲突，但策略叠加需宿主自审。
+
 ## Capabilities 授权
 
 ::: danger 每个窗口 label 都必须列入 capabilities

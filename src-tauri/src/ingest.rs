@@ -57,6 +57,7 @@ fn build_server_config(config: &IngestConfig, data_dir: PathBuf) -> ServerConfig
         Some(RetentionPolicy {
             max_age_days: None,
             max_sessions: Some(config.retain_max),
+            orphan_max_age_days: None,
         })
     } else {
         None

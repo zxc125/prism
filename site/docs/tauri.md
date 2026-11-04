@@ -236,7 +236,18 @@ const bundle = await ctrl.exportSession(id);    // prism-session bundle JSON（�
 // 大会话推荐：插件直接写盘，返回写入字节数（仅 Local 可用，P18；path 常来自系统保存对话框）
 const bytes = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json");
 // 自行落盘 / 传输后，在 console 会话页「导入」即可回放 + 看诊断信号
+
+// 一键批量上传到观测端（仅 Local 可用，P24）：串行导出 + POST /sessions/import，
+// 逐会话回执；ids 缺省 = 全部本地会话。重复上传会在观测端产生重复会话（import 换新 id）
+const results = await ctrl.uploadSessions(undefined, {
+  endpoint: "http://127.0.0.1:1421",
+  // gzip: "auto",  // 缺省：探测 /whoami requestGzip，新版 server 压缩、老 server 明文回退
+  onProgress: ({ index, total }) => console.log(`${index + 1}/${total}`),
+  onResult: (r) => console.log(r.sessionId, r.ok ? r.remoteId : r.error),
+});
 ```
+
+两条闭环腿怎么选：`uploadSessions()` 直达观测端（server 可达时一键完成）；`exportSessionToFile` 产文件走人工导入（观测端不可达 / 超大会话兜底）。
 
 **上报地址热切**：endpoint / token 可存 localStorage，提供配置 UI 切换后 reload 即可（本地 server ↔ 云端 observer-server 自由切）。[examples/tauri-demo](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) 里有现成的配置 UI 可抄。
 

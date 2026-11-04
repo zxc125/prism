@@ -20,6 +20,9 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   HttpSink,
   SegmentRecorder,
+  probeRequestGzip,
+  uploadBundle,
+  type Bundle,
   type RecordingOptions,
   type SessionMeta,
   type SignalPlugin,
@@ -66,6 +69,45 @@ export interface InitTauriOptions {
   meta?: Partial<SessionMeta>;
 }
 
+// ---- 一键打包上传（P24，仅 Local 模式）：批量导出 + POST /sessions/import ----
+
+/** 单会话上传进度回调载荷（onProgress：每会话开始时触发）。 */
+export interface UploadProgress {
+  /** 本地会话 id。 */
+  sessionId: string;
+  /** 0 起序号。 */
+  index: number;
+  /** 批量总数。 */
+  total: number;
+}
+
+/** 单会话上传结果（失败不中断批量，逐会话聚合）。 */
+export interface UploadSessionResult {
+  /** 本地会话 id。 */
+  sessionId: string;
+  ok: boolean;
+  /** 成功时：观测端分配的新会话 id（import 换新 id 语义，不跨机保留）。 */
+  remoteId?: string;
+  /** 失败时：错误文案（含 HTTP 状态/服务端 error）。 */
+  error?: string;
+}
+
+export interface UploadSessionsOptions {
+  /** 观测端地址（去尾斜杠），如 "http://127.0.0.1:1421" 或自托管 server。 */
+  endpoint: string;
+  /** 观测端鉴权 token；缺省不带 Authorization 头。 */
+  token?: string;
+  /**
+   * 请求体 gzip。默认 `"auto"`：批量开始前经 probeRequestGzip 探测一次
+   * （老 server 无标记则全批明文）；`true` 强制压缩；`false` 强制明文。
+   */
+  gzip?: "auto" | boolean;
+  /** 每会话开始时回调（进度）。 */
+  onProgress?: (p: UploadProgress) => void;
+  /** 每会话结束时回调（成功/失败均触发）。 */
+  onResult?: (r: UploadSessionResult) => void;
+}
+
 export interface TauriController {
   /**
    * 显式停止：卸载监听、flush 残留事件。Local 模式主窗口额外 stop_session
@@ -101,6 +143,21 @@ export interface TauriController {
    * `.tmp` + rename 原子写。`path` 通常经系统 save 对话框取得。
    */
   exportSessionToFile(sessionId: string, path: string): Promise<number>;
+  /**
+   * 一键打包上传（P24，仅 Local 模式，remote 抛错）：把本地落盘会话逐个导出为
+   * prism-session bundle 并 POST 到观测端 `/sessions/import`。
+   *
+   * - `ids` 缺省 = 全部本地会话（`list_sessions` 全集）；接受重复：重复上传/重试
+   *   会在观测端产生重复会话（import 换新 id，不做去重——见 决策/一键打包上传.md D4）。
+   * - 串行逐会话（server 单线程串行，并发会阻塞 /ingest 实时流）；单会话失败记入
+   *   结果数组（ok:false）不中断后续。
+   * - 上传执行器在 SDK（uploadBundle），插件 Rust 侧零改动（复用只读 list/export 命令）。
+   * - 超大会话（172MB 级）IPC + 上行较慢：失败时引导宿主走 exportSessionToFile 人工路径（D8）。
+   */
+  uploadSessions(
+    ids: string[] | undefined,
+    opts: UploadSessionsOptions,
+  ): Promise<UploadSessionResult[]>;
   /**
    * 手动开段（P17 D4，幂等）：段已活跃时早退。门控策略（交互监听/判闲/异常兜底）
    * 由宿主实现——本方法只提供机制。配 `gating: "manual"` 使用；不开 gating 时
@@ -325,6 +382,48 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
       if (!local) throw new Error("[observer-tauri] exportSessionToFile 仅 Local 模式可用");
       return invoke<number>("plugin:observer|export_session_to_file", { sessionId, path });
     },
+    // 一键打包上传（P24 D6/D7/D10）：ids 缺省取 list_sessions 全集；gzip "auto"
+    // 批前探测一次（失败回退明文）；串行 for-await，单会话失败不中断（catch 继续）。
+    async uploadSessions(ids, opts) {
+      if (!local) throw new Error("[observer-tauri] uploadSessions 仅 Local 模式可用");
+      const targets =
+        ids ??
+        (await invoke<unknown[]>("plugin:observer|list_sessions"))
+          .map((s) => (typeof (s as { id?: unknown })?.id === "string" ? (s as { id: string }).id : ""))
+          .filter(Boolean);
+      const useGzip =
+        opts.gzip === true
+          ? true
+          : opts.gzip === false
+            ? false
+            : await probeRequestGzip(opts.endpoint, opts.token);
+      const total = targets.length;
+      const results: UploadSessionResult[] = [];
+      for (let i = 0; i < total; i++) {
+        const sessionId = targets[i];
+        opts.onProgress?.({ sessionId, index: i, total });
+        try {
+          const bundle = await invoke<Bundle>("plugin:observer|export_session", { sessionId });
+          const { sessionId: remoteId } = await uploadBundle(bundle, {
+            endpoint: opts.endpoint,
+            token: opts.token,
+            gzip: useGzip,
+          });
+          const r: UploadSessionResult = { sessionId, ok: true, remoteId };
+          results.push(r);
+          opts.onResult?.(r);
+        } catch (e) {
+          const r: UploadSessionResult = {
+            sessionId,
+            ok: false,
+            error: e instanceof Error ? e.message : String(e),
+          };
+          results.push(r);
+          opts.onResult?.(r);
+        }
+      }
+      return results;
+    },
     // 手动档（P17 D4/D5）：方法体引用的是上方同名局部闭包（对象方法名不入词法
     // 作用域，无递归风险）。startSegment/stopSegment 闭包自带 rec.active 幂等守卫。
     async startSegment() {
@@ -342,5 +441,11 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
 
 // 复用 SDK 构件导出 + Local 模式 Sink（P16 下沉，console 侧 re-export 复用）
 export { TauriSink } from "./sink";
-export { HttpSink, SegmentRecorder } from "@prism-obs/observer-sdk";
-export type { InitOptions, RecordingOptions, RecordProfile } from "@prism-obs/observer-sdk";
+export { HttpSink, SegmentRecorder, uploadBundle, probeRequestGzip } from "@prism-obs/observer-sdk";
+export type {
+  InitOptions,
+  RecordingOptions,
+  RecordProfile,
+  UploadOptions,
+  UploadResult,
+} from "@prism-obs/observer-sdk";

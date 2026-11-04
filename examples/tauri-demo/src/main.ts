@@ -39,7 +39,7 @@ function loadConfig(): DemoConfig {
   return { endpoint: DEFAULT_ENDPOINT, token: "" };
 }
 
-const cfg = LOCAL ? { endpoint: "", token: "" } : loadConfig();
+const cfg = loadConfig();
 const ENDPOINT = cfg.endpoint;
 
 const label = getCurrentWebviewWindow().label;
@@ -47,15 +47,13 @@ const isMain = !window.location.hash || window.location.hash === "#/";
 
 document.getElementById("win")!.textContent = label;
 document.getElementById("endpoint")!.textContent = LOCAL
-  ? "本地落盘 · appDataDir/recordings/（Local 模式）"
+  ? `本地落盘 · appDataDir/recordings/（上传目标 ${ENDPOINT || "未配置"}）`
   : ENDPOINT;
 
-// 上报配置 UI 仅 remote 模式有意义，local 下隐藏
+// 连接配置 UI（P24 起 Local 模式同样显示：endpoint/token = 一键上传目标）。
+// 回填当前值，「应用」= 存 localStorage + reload（重新 initTauri 到新 endpoint）。
 const configEl = document.querySelector(".config") as HTMLDetailsElement | null;
-if (LOCAL) {
-  if (configEl) configEl.style.display = "none";
-} else {
-  // 配置 UI：回填当前值，「应用」= 存 localStorage + reload（重新 initTauri 到新 endpoint）
+if (configEl) {
   const epInput = document.getElementById("cfg-endpoint") as HTMLInputElement;
   const tkInput = document.getElementById("cfg-token") as HTMLInputElement;
   epInput.value = cfg.endpoint;
@@ -112,6 +110,7 @@ declare global {
     fetchThing: () => void;
     boom: () => void;
     exportBundle: () => Promise<void>;
+    uploadToConsole: () => Promise<void>;
     stopObs: () => void;
   }
 }
@@ -173,6 +172,58 @@ window.exportBundle = async () => {
   } catch (e) {
     console.error("[tauri-demo] 导出失败", e);
     alert(`导出失败：${e}`);
+  }
+};
+
+window.uploadToConsole = async () => {
+  const ctrl = (window as any).__ctrl as TauriController | undefined;
+  if (!ctrl) {
+    alert("观测未初始化");
+    return;
+  }
+  if (!LOCAL) {
+    alert("仅 Local 模式可上传（Remote 数据已实时在观测端）");
+    return;
+  }
+  if (!cfg.endpoint) {
+    alert("先在「连接配置」里填上传目标（观测端 console / server 地址）");
+    return;
+  }
+  const btn = document.getElementById("upload-btn") as HTMLButtonElement;
+  const head = document.getElementById("upload-status") as HTMLElement;
+  const list = document.getElementById("upload-list") as HTMLUListElement;
+  btn.disabled = true;
+  list.innerHTML = "";
+  head.hidden = false;
+
+  // 注意：不用 demo 旧的 ?token= URL 注入（token 会进浏览器历史），只走配置 UI。
+  try {
+    const results = await ctrl.uploadSessions(undefined, {
+      endpoint: cfg.endpoint,
+      token: cfg.token || undefined,
+      onProgress: ({ index, total }) => {
+        head.textContent = `上传中 ${index + 1}/${total}`;
+      },
+      onResult: (r) => {
+        const li = document.createElement("li");
+        if (r.ok) {
+          li.innerHTML = `<span class="ul-ok">✓ ${r.sessionId} → 已导入（观测端 id ${r.remoteId}）</span>`;
+        } else {
+          li.innerHTML = `<span class="ul-fail">✗ ${r.sessionId} → 失败：${r.error}</span>`;
+        }
+        list.appendChild(li);
+      },
+    });
+    const ok = results.filter((r) => r.ok).length;
+    const fail = results.length - ok;
+    head.textContent = `导入完成：成功 ${ok} · 失败 ${fail}（重复点击会在观测端产生重复会话）`;
+    if (!results.length) head.textContent = "本地暂无会话";
+    console.log("[tauri-demo] 上传完成", { ok, fail });
+  } catch (e) {
+    head.textContent = "上传失败";
+    console.error("[tauri-demo] 上传失败", e);
+  } finally {
+    btn.disabled = false;
   }
 };
 

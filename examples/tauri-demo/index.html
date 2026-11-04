@@ -135,6 +135,24 @@
       .config-hint code {
         color: #C8893A;
       }
+      .upload-head {
+        margin: 16px 0 0;
+        font-size: 12px;
+        color: #C8893A;
+        font-family: ui-monospace, monospace;
+      }
+      .ul-ok {
+        color: #4DD0C8;
+      }
+      .ul-fail {
+        color: #FF6B70;
+      }
+      .ul-busy {
+        color: #C8893A;
+      }
+      .ul-wait {
+        color: #666;
+      }
     </style>
   </head>
   <body>
@@ -147,13 +165,13 @@
       <span id="status">初始化…</span>
     </div>
     <details class="config">
-      <summary>上报配置（endpoint / token）</summary>
+      <summary>连接配置（endpoint / token · remote 上报 / local 上传目标）</summary>
       <div class="config-row">
         <input id="cfg-endpoint" placeholder="http://127.0.0.1:1421" />
         <input id="cfg-token" placeholder="token（可选）" type="password" />
         <button id="cfg-apply">应用并重载</button>
       </div>
-      <div class="config-hint">切云端：填 <code>http://127.0.0.1:18099</code> + server 的 token，应用后重载生效</div>
+      <div class="config-hint">切云端：填 <code>http://127.0.0.1:18099</code> + server 的 token，应用后重载生效；Local 模式下此地址 = 一键上传目标</div>
     </details>
     <div class="row">
       <button class="primary" onclick="openChild()">＋ 开子窗口</button>
@@ -161,8 +179,11 @@
       <button onclick="fetchThing()">fetch</button>
       <button onclick="boom()">抛错</button>
       <button onclick="exportBundle()">导出 bundle（Local）</button>
+      <button onclick="uploadToConsole()" id="upload-btn">上传到观测端（Local）</button>
       <button class="danger" onclick="stopObs()">停止观测</button>
     </div>
+    <div class="upload-head" id="upload-status" hidden></div>
+    <ul id="upload-list"></ul>
     <ul id="list"></ul>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -31,40 +31,142 @@ export async function openRoute(route: string, opts: { newTab?: boolean } = {}):
   }
 }
 
+/** 一个已选取的 bundle 文件：Tauri 给 { path }（Rust 侧读），浏览器给 { content }。 */
+export type PickedBundle =
+  | { path: string; name: string }
+  | { content: string; name: string };
+
+function nameOfPath(p: string): string {
+  return p.split(/[\\/]/).pop() ?? p;
+}
+
+function readTextFile(file: File): Promise<PickedBundle | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      resolve({ content: String(reader.result ?? ""), name: file.name });
+    reader.onerror = () => resolve(null);
+    reader.readAsText(file);
+  });
+}
+
 /**
- * 选一个 bundle 文件并返回内容。
- * - Tauri：plugin-dialog 原生选择器 + Rust 读文件（避免大 JSON 过 IPC 时直接拿 path）。
- *   返回 { path } 给 Backend.importBundlePath（Rust 侧再读）。
- * - 浏览器：`<input type="file">` + FileReader，直接返回 { content }。
+ * 选 bundle 文件并返回内容（P24：多选扩展；缺省单选，行为与历史一致）。
+ * - Tauri：plugin-dialog 原生选择器，返回 { path } 给 Backend.importBundlePath（Rust 侧读）。
+ * - 浏览器：`<input type="file">` + FileReader，返回 { content }。
+ * 全部取消 / 读取失败时返回 null（多选下任意一个成功即返回成功集）。
  */
-export async function pickBundleFile(): Promise<
-  { path: string; name: string } | { content: string; name: string } | null
-> {
+export async function pickBundleFiles(multiple = false): Promise<PickedBundle[] | null> {
   if (isTauri()) {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const path = await open({
-      multiple: false,
+    const picked = await open({
+      multiple,
       filters: [{ name: "会话 bundle", extensions: ["json"] }],
     });
-    if (typeof path !== "string") return null;
-    return { path, name: path.split(/[\\/]/).pop() ?? path };
+    if (picked === null) return null;
+    const paths = Array.isArray(picked) ? picked : [picked];
+    if (!paths.length) return null;
+    return paths.map((path) => ({ path, name: nameOfPath(path) }));
   }
   // 浏览器：<input type=file>
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
+    input.multiple = multiple;
     input.accept = ".json,application/json";
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) return resolve(null);
-      const reader = new FileReader();
-      reader.onload = () =>
-        resolve({ content: String(reader.result ?? ""), name: file.name });
-      reader.onerror = () => resolve(null);
-      reader.readAsText(file);
+    input.onchange = async () => {
+      const files = Array.from(input.files ?? []);
+      if (!files.length) return resolve(null);
+      const items = (await Promise.all(files.map(readTextFile))).filter(
+        (x): x is PickedBundle => x !== null,
+      );
+      resolve(items.length ? items : null);
     };
     input.click();
   });
+}
+
+/**
+ * 选一个 bundle 文件并返回内容（单选兼容入口，见 pickBundleFiles）。
+ */
+export async function pickBundleFile(): Promise<
+  { path: string; name: string } | { content: string; name: string } | null
+> {
+  const items = await pickBundleFiles(false);
+  return items?.[0] ?? null;
+}
+
+/**
+ * 监听 bundle 文件拖放（P24 导入交互），跨环境分派：
+ * - Tauri：webview `dragDropEnabled`（默认开）会拦截 HTML5 drop 事件，必须走
+ *   `onDragDropEvent`（返回真实文件系统 path）；
+ * - 浏览器：HTML5 drag 事件 + FileReader 读 content。
+ * JSON 以外的文件被忽略。返回取消监听函数。
+ */
+export async function onBundleFileDrop(handlers: {
+  onHoverChange: (hovering: boolean) => void;
+  onDrop: (items: PickedBundle[]) => void;
+}): Promise<() => void> {
+  const isJson = (name: string) => name.toLowerCase().endsWith(".json");
+  if (isTauri()) {
+    const { getCurrentWebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+    const un = await getCurrentWebviewWindow().onDragDropEvent((ev) => {
+      const p = ev.payload;
+      if (p.type === "enter" || p.type === "over") {
+        handlers.onHoverChange(true);
+      } else if (p.type === "leave") {
+        handlers.onHoverChange(false);
+      } else if (p.type === "drop") {
+        handlers.onHoverChange(false);
+        const items = (p.paths ?? [])
+          .filter((path) => isJson(path))
+          .map((path) => ({ path, name: nameOfPath(path) }));
+        if (items.length) handlers.onDrop(items);
+      }
+    });
+    return un;
+  }
+  // 浏览器：HTML5 drag 事件（depth 计数防子元素抖动）
+  let depth = 0;
+  const hasFiles = (e: DragEvent) =>
+    Array.from(e.dataTransfer?.types ?? []).includes("Files");
+  const onDragEnter = (e: DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth += 1;
+    handlers.onHoverChange(true);
+  };
+  const onDragOver = (e: DragEvent) => {
+    if (hasFiles(e)) e.preventDefault();
+  };
+  const onDragLeave = () => {
+    depth = Math.max(0, depth - 1);
+    if (!depth) handlers.onHoverChange(false);
+  };
+  const onDrop = async (e: DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth = 0;
+    handlers.onHoverChange(false);
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
+      isJson(f.name),
+    );
+    if (!files.length) return;
+    const items = (await Promise.all(files.map(readTextFile))).filter(
+      (x): x is PickedBundle => x !== null,
+    );
+    if (items.length) handlers.onDrop(items);
+  };
+  window.addEventListener("dragenter", onDragEnter);
+  window.addEventListener("dragover", onDragOver);
+  window.addEventListener("dragleave", onDragLeave);
+  window.addEventListener("drop", onDrop);
+  return () => {
+    window.removeEventListener("dragenter", onDragEnter);
+    window.removeEventListener("dragover", onDragOver);
+    window.removeEventListener("dragleave", onDragLeave);
+    window.removeEventListener("drop", onDrop);
+  };
 }
 
 /**

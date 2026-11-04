@@ -78,4 +78,4 @@ Prism 不把 error / console / network 单独存成日志文件，而是把它�
 }
 ```
 
-三条传输拓扑共用它：本地文件分享、本地 server 实时流、离线录 + 上传。离线采集（[Web SDK](./web) 的 `recordOffline`）先把数据落浏览器 IndexedDB，再 `export` 成 bundle 下载或上传。
+四条投递路径共用它：本地文件分享（export → console 导入）、云端上传（`POST /sessions/import`）、离线录 + 上传（离线采集先落浏览器 IndexedDB 再产出 bundle）、Tauri 本地落盘导出。离线采集（[Web SDK](./web) 的 `recordOffline`）先把数据落浏览器 IndexedDB，再 `export` 成 bundle 下载，或 `upload()` 直接上传观测端。

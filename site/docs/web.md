@@ -93,7 +93,7 @@ init({
 
 ## 离线采集：`recordOffline()`
 
-不依赖 console 在线：事件实时落浏览器 IndexedDB，之后导出 `prism-session` bundle，下载或上传。
+不依赖 console 在线：事件实时落浏览器 IndexedDB，之后导出 `prism-session` bundle——下载存文件（再经 console 导入），或 `upload()` 直接上传观测端。
 
 ```ts
 import { recordOffline } from "@prism-obs/observer-sdk";
@@ -106,6 +106,10 @@ const ctrl = await recordOffline({ appId: "my-app", release: "1.0.0" });
 const bundle = await ctrl.export();
 // 或直接触发浏览器下载
 await ctrl.download();
+// 或一键上传观测端（endpoint/token 在调用时传入，录制与上传目标解耦）
+const { sessionId } = await ctrl.upload(undefined, {
+  endpoint: "http://127.0.0.1:1421",
+});
 
 // 列出本机所有离线会话
 const sessions = await ctrl.list();
@@ -113,7 +117,7 @@ const sessions = await ctrl.list();
 await ctrl.clear();
 ```
 
-选项与 `init()` 基本一致（`appId` 必填；`env` / `release` / `label` / `signals` / `recording` / `meta` 可选），但**没有** `endpoint` / `token`——离线不联网。
+选项与 `init()` 基本一致（`appId` 必填；`env` / `release` / `label` / `signals` / `recording` / `meta` 可选），但**没有** `endpoint` / `token`——离线不联网；上传目标在 `upload()` 调用时传入。
 
 `OfflineController` API：
 
@@ -123,9 +127,16 @@ await ctrl.clear();
 | `stop()` | 显式停止，flush 残留事件，返回会话 id |
 | `export(id?, redactOpts?)` | 序列化为 bundle（默认当前会话；导出当前会话会自动 stop） |
 | `download(id?, filename?, redactOpts?)` | export + 触发浏览器下载 |
+| `upload(id, opts)` | 上传到观测端 `POST /sessions/import`（默认当前会话，会自动 stop；返回观测端新 id） |
 | `list()` | 列出本机所有离线会话 meta（按开始时间倒序） |
 | `clear(id?)` | 删除指定会话；不传 id = 清空全部 |
 | `destroy()` | 销毁控制器：移除 unload 钩子并停止录制（保留已录数据） |
+
+::: warning 上传语义（P24）
+- **重复上传产生重复会话**：观测端 import 总是分配新 id，不做去重——重试安全但会留副本，按需在 console 清理。
+- **不做默认脱敏**：`upload()` 不带 redact 参数；需要脱敏时自行 `export(id, redactOpts)` 后调独立函数 `uploadBundle(bundle, opts)`。
+- **请求 gzip 需协商**：SDK 默认明文上传；`probeRequestGzip(endpoint)` 探测观测端 `/whoami` 的 `requestGzip` 标记为 `true` 后，再以 `gzip: true`（`upload()` 经 `uploadBundle` 支持同参数）压缩上传。老版本 server 无标记，探测返回 `false` 自动回退明文。
+:::
 
 > rrweb 事件经缓冲（默认 1s flush），页面突然关闭可能丢失末尾 <1s 的事件；正常 `stop()` 收尾可避免。已落盘的会话可经 `list()` 找回再导出。
 

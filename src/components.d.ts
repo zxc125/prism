@@ -35,6 +35,7 @@ declare module 'vue' {
     ElTabPane: typeof import('element-plus/es')['ElTabPane']
     ElTabs: typeof import('element-plus/es')['ElTabs']
     EmptyState: typeof import('./components/common/EmptyState.vue')['default']
+    ImportTray: typeof import('./components/sessions/ImportTray.vue')['default']
     PlayerShell: typeof import('./components/player/PlayerShell.vue')['default']
     RecordControls: typeof import('./components/live/RecordControls.vue')['default']
     ReplayGrid: typeof import('./components/player/ReplayGrid.vue')['default']

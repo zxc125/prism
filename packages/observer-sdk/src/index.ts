@@ -2,6 +2,7 @@ import { HttpSink, IndexedDBSink } from "./sinks";
 import { SegmentRecorder } from "./segment-recorder";
 import { buildBundle, type Bundle } from "./bundle";
 import { redact, type RedactionOptions } from "./redact";
+import { uploadBundle, type UploadOptions, type UploadResult } from "./upload";
 import type { OfflineSessionData, RecordingOptions, SessionMeta, SignalSet } from "./types";
 
 export interface InitOptions {
@@ -99,6 +100,12 @@ export interface OfflineController {
   export(id?: string, redactOpts?: RedactionOptions): Promise<Bundle>;
   /** export + 触发浏览器下载。 */
   download(id?: string, filename?: string, redactOpts?: RedactionOptions): Promise<void>;
+  /**
+   * 上传指定会话到观测端（默认当前会话；上传当前会话会自动 stop）。
+   * 不做脱敏（P24 D3）——需要脱敏的宿主自行 export(id, redactOpts) 后调 uploadBundle。
+   * 重复上传会在观测端产生重复会话（接受重复，见 D4）。
+   */
+  upload(id: string | undefined, opts: UploadOptions): Promise<UploadResult>;
   /** 列出本机所有离线会话 meta（按开始时间倒序）。 */
   list(): Promise<OfflineSessionData["session"][]>;
   /** 删除指定会话；不传 id = 清空全部。 */
@@ -109,7 +116,8 @@ export interface OfflineController {
 
 /**
  * 在被观测 web 应用中离线录制：SegmentRecorder + IndexedDBSink，不连 console。
- * 事件实时落 IndexedDB，后续可 export 成 prism-session bundle，下载或上传 console。
+ * 事件实时落 IndexedDB，后续可 export 成 prism-session bundle：download() 存本地
+ * 文件（再经 console 导入），或 upload(id, opts) 直接上传观测端（P24）。
  *
  * 与 init()（HttpSink 实时上报）并列，差别仅在 Sink。
  * 注意：rrweb 事件经 SegmentRecorder 缓冲（默认 1s flush），页面突然关闭可能丢失
@@ -186,6 +194,10 @@ export async function recordOffline(
       a.remove();
       URL.revokeObjectURL(url);
     },
+    async upload(id = sessionId, opts) {
+      const bundle = await doExport(id);
+      return uploadBundle(bundle, opts);
+    },
     async list() {
       return sink.listSessions();
     },
@@ -216,6 +228,8 @@ export {
 export type { Bundle, ParseResult } from "./bundle";
 export { redact } from "./redact";
 export type { RedactionOptions } from "./redact";
+export { uploadBundle, probeRequestGzip } from "./upload";
+export type { UploadOptions, UploadResult } from "./upload";
 export { resolveRecordOptions } from "./recording-profile";
 export type { RecordTuning } from "./recording-profile";
 export type {

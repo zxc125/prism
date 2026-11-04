@@ -16,7 +16,7 @@ mod routes;
 mod tenant;
 
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -246,13 +246,45 @@ fn respond(req: Request, status: u16, body: Option<String>, accept_gzip: bool) -
     req.respond(resp)
 }
 
-/// 读请求体为 JSON Value，同时返回原始字节长度（供配额估算）。
+/// 判定请求体是否 gzip 压缩（`Content-Encoding` 含 gzip）。
+fn request_is_gzip(req: &Request) -> bool {
+    req.headers().iter().any(|h| {
+        h.field.as_str().as_str().eq_ignore_ascii_case("content-encoding")
+            && h.value.as_str().contains("gzip")
+    })
+}
+
+/// 读请求体为 JSON Value，同时返回字节长度（供配额估算）。
+///
+/// P24：支持 `Content-Encoding: gzip` 请求体（bundle 上传压缩传输）——解压后再解析，
+/// 无该头时行为与历史版本逐字节一致。配额估算长度 = 解压后逻辑字节数（与未压缩
+/// 请求口径一致）；gzip 损坏 / 非 UTF-8 / 空体均返回 Null 且长度记 0（与历史
+/// read_to_string 失败口径一致——请求将以 400 拒绝，不参与配额估算）。
 fn read_body(req: &mut Request) -> (serde_json::Value, usize) {
-    let mut body = String::new();
-    if req.as_reader().read_to_string(&mut body).is_err() {
+    let content_gzip = request_is_gzip(req);
+    decode_body(req.as_reader(), content_gzip)
+}
+
+/// 字节层解码（与 tiny_http 解耦，便于直测二进制 gzip body）。
+fn decode_body(reader: &mut dyn Read, content_gzip: bool) -> (serde_json::Value, usize) {
+    let mut raw = Vec::new();
+    if reader.read_to_end(&mut raw).is_err() {
         return (serde_json::Value::Null, 0);
     }
-    let len = body.len();
+    let bytes = if content_gzip {
+        let mut out = Vec::new();
+        if flate2::read::GzDecoder::new(&raw[..]).read_to_end(&mut out).is_err() {
+            return (serde_json::Value::Null, 0);
+        }
+        out
+    } else {
+        raw
+    };
+    let len = bytes.len();
+    let body = match String::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(_) => return (serde_json::Value::Null, 0),
+    };
     if body.is_empty() {
         return (serde_json::Value::Null, len);
     }
@@ -310,6 +342,26 @@ fn tenant_root(data_dir: &Path, tenant: Option<&TenantConfig>) -> PathBuf {
     match tenant {
         Some(t) => data_dir.join(&t.tenant_id),
         None => data_dir.to_path_buf(),
+    }
+}
+
+/// /whoami 响应体：tenant 上下文 + 配额余量 + 能力标记。
+///
+/// P24：`requestGzip` = 请求侧 gzip 解压支持（additive 字段，老 server 不返回）。
+/// 客户端上传 bundle 前据此探测能否压缩请求体（见 docs/架构/一键打包上传（方案）.md D5）。
+fn whoami_payload(tenant: Option<&TenantConfig>, usage_bytes: u64) -> serde_json::Value {
+    match tenant {
+        Some(t) => json!({
+            "multiTenant": true,
+            "tenantId": t.tenant_id,
+            "appIds": t.app_ids,
+            "quotaBytes": t.quota_bytes,
+            "usageBytes": usage_bytes,
+            "rateLimit": t.rate_limit,
+            "retention": t.retention,
+            "requestGzip": true,
+        }),
+        None => json!({ "multiTenant": false, "requestGzip": true }),
     }
 }
 
@@ -413,22 +465,11 @@ fn handle_request(state: &Arc<Mutex<Inner>>, mut req: Request) -> Result<(), Str
     } else if url == "/whoami" && method == "GET" {
         // P10：tenant 上下文 + 配额余量。多租户返回 tenant 信息 + usageBytes；
         // 单租户返回 { multiTenant: false }，前端据此隐藏 tenant 上下文。
-        match &tenant {
-            Some(t) => {
-                let usage_bytes = quota.usage(&t.tenant_id, &root);
-                let info = json!({
-                    "multiTenant": true,
-                    "tenantId": t.tenant_id,
-                    "appIds": t.app_ids,
-                    "quotaBytes": t.quota_bytes,
-                    "usageBytes": usage_bytes,
-                    "rateLimit": t.rate_limit,
-                    "retention": t.retention,
-                });
-                (200, Some(info.to_string()))
-            }
-            None => (200, Some(json!({ "multiTenant": false }).to_string())),
-        }
+        let usage = match &tenant {
+            Some(t) => quota.usage(&t.tenant_id, &root),
+            None => 0,
+        };
+        (200, Some(whoami_payload(tenant.as_ref(), usage).to_string()))
     } else if url.starts_with("/sessions") {
         match handle_read_route(&root, &method, &url, body, tenant.as_ref()) {
             Ok(r) => r,
@@ -608,5 +649,97 @@ mod tests {
         assert!(mime_for("svg").contains("image/svg"));
         assert!(mime_for("woff2").contains("font/woff2"));
         assert_eq!(mime_for("unknown"), "application/octet-stream");
+    }
+
+    // ---- P24：请求侧 gzip + /whoami requestGzip ----
+
+    fn gzipped(data: &[u8]) -> Vec<u8> {
+        let mut enc = GzEncoder::new(Vec::new(), Compression::default());
+        enc.write_all(data).unwrap();
+        enc.finish().unwrap()
+    }
+
+    /// gzip 请求体：解压后正确解析，长度口径 = 解压后字节数。
+    #[test]
+    fn read_body_decodes_gzip_request() {
+        let payload = r#"{"format":"prism-session","version":1}"#;
+        let mut cur = std::io::Cursor::new(gzipped(payload.as_bytes()));
+        let (v, len) = decode_body(&mut cur, true);
+        assert_eq!(v["format"], "prism-session");
+        assert_eq!(v["version"], 1);
+        assert_eq!(len, payload.len());
+    }
+
+    /// 无 Content-Encoding：行为与历史版本一致（回归钉死）。
+    #[test]
+    fn read_body_plain_body_unchanged() {
+        let raw = br#"{"a":1}"#.to_vec();
+        let mut cur = std::io::Cursor::new(raw.clone());
+        let (v, len) = decode_body(&mut cur, false);
+        assert_eq!(v["a"], 1);
+        assert_eq!(len, raw.len());
+    }
+
+    /// 声明 gzip 但 body 损坏：Null + 长度记 0（既有 400 路径接管，不 panic）。
+    #[test]
+    fn read_body_corrupt_gzip_returns_null() {
+        let mut cur = std::io::Cursor::new(vec![0u8, 1, 2, 3]);
+        let (v, len) = decode_body(&mut cur, true);
+        assert!(v.is_null());
+        assert_eq!(len, 0);
+    }
+
+    /// 非 UTF-8 body（无 CE）：与历史 read_to_string 失败口径一致（Null, 0）。
+    #[test]
+    fn read_body_non_utf8_returns_null_zero() {
+        let mut cur = std::io::Cursor::new(vec![0xffu8, 0xfe, 0x00, 0x01]);
+        let (v, len) = decode_body(&mut cur, false);
+        assert!(v.is_null());
+        assert_eq!(len, 0);
+    }
+
+    /// gzip 压缩 bundle 的上传 roundtrip：read_body 解压 -> import 落盘。
+    #[test]
+    fn gzip_bundle_import_roundtrip() {
+        let dir = tempdir().unwrap();
+        let bundle = serde_json::json!({
+            "format": "prism-session",
+            "version": 1,
+            "session": { "id": "100", "startedAt": 1 },
+            "windows": [],
+            "segments": { "main#1": [] },
+            "annotations": []
+        });
+        let mut cur = std::io::Cursor::new(gzipped(bundle.to_string().as_bytes()));
+        let (body, _) = decode_body(&mut cur, true);
+        let (st, out) =
+            handle_read_route(dir.path(), "POST", "/sessions/import", body, None).unwrap();
+        assert_eq!(st, 200);
+        let sid = serde_json::from_str::<serde_json::Value>(&out.expect("body"))
+            .unwrap()["sessionId"]
+            .as_str()
+            .expect("sessionId")
+            .to_string();
+        let listed = observer_storage::list_sessions(dir.path());
+        assert!(listed.iter().any(|s| s["id"].as_str() == Some(sid.as_str())));
+    }
+
+    /// /whoami 两分支均带 requestGzip 能力标记（additive，老消费方不受影响）。
+    #[test]
+    fn whoami_payload_marks_request_gzip() {
+        let single = whoami_payload(None, 0);
+        assert_eq!(single["multiTenant"], false);
+        assert_eq!(single["requestGzip"], true);
+
+        let tenant: TenantConfig = serde_json::from_value(serde_json::json!({
+            "key": "k1",
+            "tenantId": "t1"
+        }))
+        .unwrap();
+        let multi = whoami_payload(Some(&tenant), 42);
+        assert_eq!(multi["multiTenant"], true);
+        assert_eq!(multi["tenantId"], "t1");
+        assert_eq!(multi["usageBytes"], 42);
+        assert_eq!(multi["requestGzip"], true);
     }
 }

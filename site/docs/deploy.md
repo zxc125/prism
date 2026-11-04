@@ -204,7 +204,7 @@ init({
 });
 ```
 
-离线 bundle 上传：`POST /sessions/import`（带 Bearer key）。
+离线 bundle 上传：`POST /sessions/import`（带 Bearer key）。请求体支持 gzip：server 在 `GET /whoami` 返回 `requestGzip: true` 时，客户端（SDK `probeRequestGzip`）探测后以 `Content-Encoding: gzip` 压缩上传；老版本 server 无此标记，客户端自动回退明文。同一 bundle 重复上传会产生重复会话（import 每次分配新 id，不做去重）。
 
 ## 故障排查
 

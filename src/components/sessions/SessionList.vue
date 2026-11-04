@@ -25,8 +25,10 @@ import {
 } from "../../composables/backend";
 import {
   isTauri,
-  pickBundleFile,
+  pickBundleFiles,
+  onBundleFileDrop,
   onWindowFocus,
+  type PickedBundle,
 } from "../../composables/tauri";
 import {
   sourceOf,
@@ -38,6 +40,7 @@ import {
 } from "../common/format";
 import StatusDot from "../common/StatusDot.vue";
 import SessionFilters from "./SessionFilters.vue";
+import ImportTray, { type ImportJob } from "./ImportTray.vue";
 import EmptyState from "../common/EmptyState.vue";
 import SkeletonList from "../common/SkeletonList.vue";
 
@@ -212,21 +215,95 @@ async function exportSession(s: SessionMeta) {
   }
 }
 
-async function triggerImport() {
-  const picked = await pickBundleFile();
-  if (!picked) return;
+// ---- 导入通道（P24 D11）：批量导入 + 逐文件状态机 + 拖放 ----
+
+const importJobs = ref<ImportJob[]>([]);
+const importRunning = ref(false);
+const importHover = ref(false);
+let importSeq = 0;
+
+const importOkCount = computed(
+  () => importJobs.value.filter((j) => j.status === "ok").length,
+);
+const importFailCount = computed(
+  () => importJobs.value.filter((j) => j.status === "fail").length,
+);
+const importBusyCount = computed(
+  () => importJobs.value.filter((j) => j.status === "busy").length,
+);
+const importProgressLabel = computed(() => {
+  const done = importOkCount.value + importFailCount.value;
+  return importRunning.value ? `${done}/${importJobs.value.length}` : "";
+});
+
+function closeImportTray() {
+  if (importBusyCount.value) return;
+  importJobs.value = [];
+}
+
+function openPlayerRemote(id: string) {
+  openPlayer(id);
+}
+
+/** 入队并启动串行队列（重复调用安全：running 守卫）。 */
+function enqueueImports(items: PickedBundle[]) {
+  if (!items.length) return;
+  importJobs.value.push(
+    ...items.map((it) => ({
+      ...it,
+      key: `imp-${++importSeq}`,
+      status: "wait" as const,
+    })),
+  );
+  void runImportQueue();
+}
+
+async function runImportQueue() {
+  if (importRunning.value) return;
+  importRunning.value = true;
+  let importedAny = false;
   try {
-    if ("path" in picked) {
-      await getBackend().importBundlePath(picked.path);
-    } else {
-      await getBackend().importBundleContent(picked.content);
+    for (;;) {
+      const job = importJobs.value.find((j) => j.status === "wait");
+      if (!job) break;
+      job.status = "busy";
+      try {
+        // 数据面复用既有命令：Tauri 拖放/对话框给 { path }（Rust 读），浏览器给 { content }
+        const newId =
+          "path" in job
+            ? await getBackend().importBundlePath(job.path)
+            : await getBackend().importBundleContent(job.content);
+        job.remoteId = newId;
+        job.status = "ok";
+        importedAny = true;
+      } catch (e) {
+        job.error = String(e);
+        job.status = "fail";
+      }
     }
-    await refresh();
-    ElMessage.success("已导入会话");
-  } catch (err) {
-    ElMessage.error(`导入失败: ${err}`);
+  } finally {
+    importRunning.value = false;
+    if (importedAny) {
+      await refresh();
+      ElMessage.success(
+        importFailCount.value
+          ? `导入完成：成功 ${importOkCount.value} · 失败 ${importFailCount.value}`
+          : `已导入 ${importOkCount.value} 个会话`,
+      );
+    } else if (importFailCount.value) {
+      ElMessage.error(`导入失败 ${importFailCount.value} 个文件`);
+    }
   }
 }
+
+async function triggerImport() {
+  const picked = await pickBundleFiles(true);
+  if (!picked) return;
+  enqueueImports(picked);
+}
+
+// 拖放：Tauri 走 onDragDropEvent（真实 path），浏览器走 HTML5 事件（File→content）。
+let unlistenDrop: (() => void) | null = null;
 
 // ---- el-table-v2 列渲染（P21）----
 // cellRenderer 输出不带 scoped data-v，行样式驻 theme.css 的 .sess-table/.st-*（非 scoped）。
@@ -396,14 +473,31 @@ onMounted(async () => {
       void refresh();
     }
   });
+  unlistenDrop = await onBundleFileDrop({
+    onHoverChange: (hovering) => {
+      importHover.value = hovering;
+    },
+    onDrop: (items) => enqueueImports(items),
+  });
 });
-onBeforeUnmount(() => unlistenFocus?.());
+onBeforeUnmount(() => {
+  unlistenFocus?.();
+  unlistenDrop?.();
+});
 
 defineExpose({ refresh });
 </script>
 
 <template>
-  <section class="sessions-view">
+  <section class="sessions-view" :class="{ 'is-drop-hover': importHover }">
+    <!-- 拖放接收态（P24 D11）：全视图虚线接收框 -->
+    <div v-if="importHover" class="drop-overlay" aria-hidden="true">
+      <div class="drop-frame">
+        <div class="drop-glyph mono">⇣</div>
+        <div class="drop-title">松开以导入会话 bundle</div>
+        <div class="drop-hint">.json 会话文件 · 支持多文件</div>
+      </div>
+    </div>
     <header class="sv-head">
       <div>
         <div class="eyebrow">会话观测</div>
@@ -422,11 +516,23 @@ defineExpose({ refresh });
           <span class="mono">✕</span>
           删除所选{{ selectedCount ? `(${selectedCount})` : "" }}
         </button>
-        <button class="import-btn" @click="triggerImport">
-          <span class="mono">↧</span> 导入
+        <button
+          class="import-btn"
+          :disabled="importRunning"
+          title="支持多选；也可把 .json bundle 文件拖进窗口"
+          @click="triggerImport"
+        >
+          <span class="mono">↧</span>
+          {{ importRunning ? `导入中 ${importProgressLabel}` : "导入" }}
         </button>
       </div>
     </header>
+
+    <ImportTray
+      :jobs="importJobs"
+      @close="closeImportTray"
+      @replay="openPlayerRemote"
+    />
 
     <div class="sv-list">
       <SkeletonList v-if="loading" :rows="6" />
@@ -506,6 +612,48 @@ defineExpose({ refresh });
   padding: 22px 24px;
   min-width: 0;
   height: 100%;
+  position: relative;
+}
+/* 拖放接收态：视图微暗，焦点让给虚线接收框 */
+.sessions-view.is-drop-hover > *:not(.drop-overlay) {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+.drop-frame {
+  border: 1px dashed var(--amber);
+  background: var(--amber-tint);
+  box-shadow: 0 0 24px var(--amber-glow);
+  border-radius: var(--radius);
+  padding: 28px 44px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+.drop-glyph {
+  font-size: var(--fs-2xl);
+  color: var(--amber);
+  line-height: 1;
+}
+.drop-title {
+  font-size: var(--fs-md);
+  color: var(--bone);
+  letter-spacing: 0.02em;
+}
+.drop-hint {
+  font-size: var(--fs-xs);
+  color: var(--ash);
+  letter-spacing: 0.04em;
 }
 .sv-head {
   display: flex;

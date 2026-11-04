@@ -493,3 +493,47 @@ fn http_raw(port: u16, method: &str, path: &str, body: Option<&str>, auth: Optio
     }
     panic!("connect to 127.0.0.1:{port} failed after retries");
 }
+
+/// P24 回归钉死：CORS 预检必须放行 Content-Encoding（请求侧 gzip 上传的头）。
+/// 缺失形态：webview preflight 被拒，报 "Request header field Content-Encoding
+/// is not allowed by Access-Control-Allow-Headers"（2026-11-04 实测踩坑）。
+#[test]
+fn cors_preflight_allows_content_encoding() {
+    let dir = tempdir().unwrap();
+    let data_dir = dir.path().to_path_buf();
+    let port = start_server(&data_dir, None);
+
+    // start_server 返回时 accept 线程可能未就绪，按既有 http() 助手同款重试
+    let mut stream = None;
+    for attempt in 0..20 {
+        match TcpStream::connect(("127.0.0.1", port)) {
+            Ok(s) => {
+                stream = Some(s);
+                break;
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(50 * (attempt + 1))),
+        }
+    }
+    let mut stream = stream.expect("connect to 127.0.0.1:{port} failed after retries");
+    let req = "OPTIONS /sessions/import HTTP/1.1\r\n\
+               Host: 127.0.0.1\r\n\
+               Origin: http://localhost:1422\r\n\
+               Access-Control-Request-Method: POST\r\n\
+               Access-Control-Request-Headers: content-type, content-encoding\r\n\
+               Connection: close\r\n\r\n";
+    stream.write_all(req.as_bytes()).unwrap();
+    let mut resp = String::new();
+    stream.read_to_string(&mut resp).unwrap();
+
+    assert!(resp.starts_with("HTTP/1.1 204"), "预检应 204：{resp}");
+    let headers = resp.split("\r\n\r\n").next().unwrap().to_lowercase();
+    let allow = headers
+        .split("access-control-allow-headers:")
+        .nth(1)
+        .expect("响应缺 Access-Control-Allow-Headers");
+    let allow = allow.split("\r\n").next().unwrap();
+    assert!(
+        allow.contains("content-encoding"),
+        "Allow-Headers 缺 Content-Encoding：{allow}"
+    );
+}

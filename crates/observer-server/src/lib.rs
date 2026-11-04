@@ -376,8 +376,13 @@ fn handle_request(state: &Arc<Mutex<Inner>>, mut req: Request) -> Result<(), Str
                     .expect("static header"),
             )
             .with_header(
-                Header::from_bytes("Access-Control-Allow-Headers", "Content-Type, Authorization")
-                    .expect("static header"),
+                Header::from_bytes(
+                    "Access-Control-Allow-Headers",
+                    // P24：Content-Encoding 随请求侧 gzip 上传引入，必须在预检白名单内，
+                    // 否则 webview 侧 preflight 被拒（"not allowed by Access-Control-Allow-Headers"）
+                    "Content-Type, Authorization, Content-Encoding",
+                )
+                .expect("static header"),
             );
         return req.respond(resp).map_err(|e| e.to_string());
     }

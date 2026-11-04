@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { parseBundle, buildBundle, probeRequestGzip, uploadBundle } from "@prism-obs/observer-sdk";
 import { initTauri, type TauriController } from "@prism-obs/observer-tauri";
 
 // 双模式开关（P16 D10）：`VITE_OBSERVER_MODE=local pnpm tauri dev` 进入本地落盘模式
@@ -111,6 +112,7 @@ declare global {
     boom: () => void;
     exportBundle: () => Promise<void>;
     uploadToConsole: () => Promise<void>;
+    uploadBundleFile: () => Promise<void>;
     stopObs: () => void;
   }
 }
@@ -175,6 +177,12 @@ window.exportBundle = async () => {
   }
 };
 
+// 网络类报错（fetch 连接失败）翻译成可行动的提示，避免只显原始异常（两个上传入口共用）。
+const friendlyError = (raw: string): string =>
+  /failed to fetch|networkerror|load failed|could not connect/i.test(raw)
+    ? "无法连接上传目标（检查地址/端口与 server 是否启动；console 默认 http://127.0.0.1:1421）"
+    : raw;
+
 window.uploadToConsole = async () => {
   const ctrl = (window as any).__ctrl as TauriController | undefined;
   if (!ctrl) {
@@ -209,14 +217,17 @@ window.uploadToConsole = async () => {
         if (r.ok) {
           li.innerHTML = `<span class="ul-ok">✓ ${r.sessionId} → 已导入（观测端 id ${r.remoteId}）</span>`;
         } else {
-          li.innerHTML = `<span class="ul-fail">✗ ${r.sessionId} → 失败：${r.error}</span>`;
+          li.innerHTML = `<span class="ul-fail">✗ ${r.sessionId} → 失败：${friendlyError(r.error ?? String(r.error))}</span>`;
         }
         list.appendChild(li);
       },
     });
     const ok = results.filter((r) => r.ok).length;
     const fail = results.length - ok;
-    head.textContent = `导入完成：成功 ${ok} · 失败 ${fail}（重复点击会在观测端产生重复会话）`;
+    head.textContent =
+      ok === 0 && fail > 0
+        ? `上传失败 ${fail} 个：请检查上传目标地址/端口（当前 ${cfg.endpoint}；console 默认 http://127.0.0.1:1421）`
+        : `导入完成：成功 ${ok} · 失败 ${fail}（重复点击会在观测端产生重复会话）`;
     if (!results.length) head.textContent = "本地暂无会话";
     console.log("[tauri-demo] 上传完成", { ok, fail });
   } catch (e) {
@@ -225,6 +236,60 @@ window.uploadToConsole = async () => {
   } finally {
     btn.disabled = false;
   }
+};
+
+// 选择 bundle 文件上传（P24 补充入口）：文件 → parseBundle 预校验 → uploadBundle。
+// 用 <input type=file> 读内容（无需 plugin-dialog / capabilities），浏览器与 Tauri webview 通用。
+window.uploadBundleFile = async () => {
+  if (!cfg.endpoint) {
+    alert("先在「连接配置」里填上传目标（观测端 console / server 地址）");
+    return;
+  }
+  const btn = document.getElementById("upload-file-btn") as HTMLButtonElement;
+  const head = document.getElementById("upload-status") as HTMLElement;
+  const list = document.getElementById("upload-list") as HTMLUListElement;
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json,application/json";
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    btn.disabled = true;
+    head.hidden = false;
+    head.textContent = `上传中：${file.name}`;
+    const failLine = (msg: string) => {
+      list.innerHTML = "";
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="ul-fail">✗ ${file.name} → 失败：${msg}</span>`;
+      list.appendChild(li);
+    };
+    try {
+      const parsed = parseBundle(JSON.parse(await file.text()));
+      if (!parsed.ok || !parsed.data) {
+        failLine(`不是有效的会话 bundle：${parsed.error ?? "未知原因"}`);
+        return;
+      }
+      const useGzip = await probeRequestGzip(cfg.endpoint, cfg.token || undefined);
+      const { sessionId } = await uploadBundle(buildBundle(parsed.data), {
+        endpoint: cfg.endpoint,
+        token: cfg.token || undefined,
+        gzip: useGzip,
+      });
+      list.innerHTML = "";
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="ul-ok">✓ ${file.name} → 已导入（观测端 id ${sessionId}）</span>`;
+      list.appendChild(li);
+      head.textContent = "导入完成（重复上传会在观测端产生重复会话）";
+      console.log("[tauri-demo] 文件上传完成", file.name, sessionId);
+    } catch (e) {
+      failLine(e instanceof SyntaxError ? "文件不是合法 JSON" : friendlyError(String(e)));
+      head.textContent = "上传失败";
+      console.error("[tauri-demo] 文件上传失败", e);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  input.click();
 };
 
 window.stopObs = () => {

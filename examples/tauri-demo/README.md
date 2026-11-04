@@ -26,6 +26,7 @@ Local 模式下「上传到观测端（Local）」按钮：把本地全部落盘
 - gzip 自动协商：探测 `/whoami` 的 `requestGzip` 标记，新版 server 压缩上传、老 server 自动回退明文。
 - 超大会话上传失败时，可改走「导出 bundle（Local）」产文件，再在 console 会话页导入。
 - **✅ 跑通的标志**：console 会话浏览器出现多个带「导入」标记的会话；回执区逐行 ✓/✗。
+- 「**选择 bundle 文件上传**」按钮：任选一个 `.json` bundle 文件（不经本地会话列表，如别处导出的文件）→ `parseBundle` 预校验 → 单文件上传，同样的回执区展示。
 
 ## 手动档门控（P17）
 

@@ -3,6 +3,7 @@
 //!
 //! 命令泛型 `R: Runtime` 以适配任意宿主 runtime（与 tauri-plugin-opener 一致）。
 
+use std::io::Write as _;
 use std::sync::Mutex;
 
 use serde_json::{json, Value};
@@ -12,7 +13,7 @@ use crate::config::{Mode, ObserverConfig};
 use crate::session::Session;
 use crate::storage::{
     append_events_file, append_lifecycle, build_export_bundle, finalize_session, now_ms,
-    recordings_root_with, validate_session_id,
+    recordings_root_with, validate_session_id, write_export_bundle_streaming,
 };
 use crate::storage::list_sessions as storage_list_sessions;
 
@@ -305,33 +306,76 @@ pub fn export_session<R: Runtime>(
     build_export_bundle(&recordings_root_with(&app, &cfg).join(&session_id))
 }
 
-/// bundle 序列化 + 原子写盘（`.tmp` + rename，P7 惯例）。独立纯函数便于单测
-/// （命令外壳只做门禁 + 丢线程池）。返回写入字节数。
-fn write_bundle_to_file(dir: &std::path::Path, path: &str) -> Result<u64, String> {
-    let bundle = build_export_bundle(dir)?;
-    let json = serde_json::to_string(&bundle).map_err(|e| e.to_string())?;
+/// bundle 流式写盘（P25）：[`write_export_bundle_streaming`] 直接写 `.tmp`，成功后
+/// rename（P7 惯例原子写）；**任一步失败清理 `.tmp`**（旧全量实现失败会残留，顺手治理）。
+/// 返回值 = 实际落盘文件字节数（经 metadata 取，压缩与否均成立——D7）。
+///
+/// `compress=true` 时外套 [`zstd::Encoder`]（level 3，与下游宿主 client_log 同款）——
+/// 落盘即 `.json.zst`，解压后 = v1 bundle 原文（D2 交付文件层，契约零变化）；后缀由
+/// 调用方 `path` 决定，插件不改名（P18 边界：path 是调用方责任）。
+///
+/// 内存 O(缓冲+最长单事件行)：不再 build 全量 Value 树 + 全量 JSON String 副本
+/// （旧实现 3GB 会话峰值 ≈10GB，换页抖动/OOM——P25 的事故源）。
+/// 独立纯函数便于单测（命令外壳只做门禁 + 丢线程池）。
+fn write_bundle_to_file(
+    dir: &std::path::Path,
+    path: &str,
+    compress: bool,
+) -> Result<u64, String> {
     let tmp = format!("{path}.tmp");
-    std::fs::write(&tmp, json.as_bytes()).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
-    Ok(json.len() as u64)
+    let res = (|| -> Result<u64, String> {
+        let f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        let wtr = std::io::BufWriter::new(f);
+        if compress {
+            let mut enc =
+                zstd::Encoder::new(wtr, 3).map_err(|e| e.to_string())?;
+            write_export_bundle_streaming(dir, &mut enc)?;
+            let mut inner = enc.finish().map_err(|e| e.to_string())?;
+            inner.flush().map_err(|e| e.to_string())?;
+        } else {
+            let mut wtr = wtr;
+            write_export_bundle_streaming(dir, &mut wtr)?;
+            wtr.flush().map_err(|e| e.to_string())?;
+        }
+        Ok(std::fs::metadata(&tmp).map_err(|e| e.to_string())?.len())
+    })();
+    match res {
+        Ok(n) => std::fs::rename(&tmp, path).map(|_| n).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            e.to_string()
+        }),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
 }
 
 /// Local 模式：导出会话 bundle 并由插件直接写盘（P18，D5 扩展——落盘目标仍由宿主传
 /// `path` 决定，插件代执行大 JSON 序列化与文件写入，避开宿主 JS 主线程与大载荷 IPC，
-/// bond 0910 提案改动 B）。返回写入字节数。`path` 天然任意（通常经 save 对话框取得，
-/// 不做白名单——`observer:default` 已含 `allow-export-session`，数据面无能力升级）；
-/// `session_id` 仍走 P7 穿越防护。
+/// bond 0910 提案改动 B）。返回**实际落盘文件字节数**（P25 起压缩时为压缩后字节）。
+/// `path` 天然任意（通常经 save 对话框取得，不做白名单——`observer:default` 已含
+/// `allow-export-session`，数据面无能力升级）；`session_id` 仍走 P7 穿越防护。
 ///
-/// 执行模型（P18 D3）：`async fn` + [`tauri::async_runtime::spawn_blocking`]——build +
-/// serialize + write 为秒级操作，丢阻塞线程池不占 async worker；`State` 不可 move 进
-/// 闭包，门禁与路径拼装在闭包外完成且锁不跨 await。带借用参数（`State`）的 async 命令
-/// 默认跑主线程，`(async)` 属性强制上异步运行时（与 P17 D3 属性语义同源）。
+/// P25 两处升级：
+/// - **执行模型**：导出链从 build 全量 Value + 全量 JSON String 切为
+///   [`write_export_bundle_streaming`] 流式写——内存 O(缓冲+最长单事件行)，GB 级会话
+///   不再峰值 10GB 级（换页抖动/OOM 根治）；
+/// - **compress opt-in**（D1）：`compress: Option<bool>` 缺省 None = false = 明文
+///   `.json`（console「导出→导入」闭环零变化，老调用方零改动）；`Some(true)` 落盘
+///   `.json.zst`（zstd level 3，解压后即 v1 bundle 原文，后缀由调用方 path 决定）。
+///
+/// 执行模型（P18 D3）：`async fn` + [`tauri::async_runtime::spawn_blocking`]——导出为
+/// 秒级操作，丢阻塞线程池不占 async worker；`State` 不可 move 进闭包，门禁与路径拼装
+/// 在闭包外完成且锁不跨 await。带借用参数（`State`）的 async 命令默认跑主线程，
+/// `(async)` 属性强制上异步运行时（与 P17 D3 属性语义同源）。
 #[tauri::command(async)]
 pub async fn export_session_to_file<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, SessionState>,
     session_id: String,
     path: String,
+    compress: Option<bool>,
 ) -> Result<u64, String> {
     let cfg = state.lock().map_err(|e| e.to_string())?.config.clone();
     ensure_local(&cfg)?;
@@ -339,7 +383,8 @@ pub async fn export_session_to_file<R: Runtime>(
         return Err(format!("invalid session id: {session_id}"));
     }
     let dir = recordings_root_with(&app, &cfg).join(&session_id);
-    tauri::async_runtime::spawn_blocking(move || write_bundle_to_file(&dir, &path))
+    let compress = compress.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || write_bundle_to_file(&dir, &path, compress))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -466,7 +511,7 @@ mod tests {
         let target = root.path().join("out.bundle.json");
 
         let mut expect = build_export_bundle(&dir).unwrap();
-        let n = write_bundle_to_file(&dir, target.to_str().unwrap()).unwrap();
+        let n = write_bundle_to_file(&dir, target.to_str().unwrap(), false).unwrap();
         let written: Value =
             serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
         expect["exportedAt"] = written["exportedAt"].clone(); // 对齐时间戳后比 canonical 文本
@@ -487,7 +532,7 @@ mod tests {
         let target = root.path().join("out.bundle.json");
         std::fs::write(&target, "stale").unwrap();
 
-        write_bundle_to_file(&dir, target.to_str().unwrap()).unwrap();
+        write_bundle_to_file(&dir, target.to_str().unwrap(), false).unwrap();
         let written: Value =
             serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
         assert_eq!(written["format"], "prism-session");
@@ -497,11 +542,54 @@ mod tests {
     fn to_file_errors_when_session_dir_missing() {
         let root = tempfile::tempdir().unwrap();
         let target = root.path().join("out.bundle.json");
-        let err = write_bundle_to_file(&root.path().join("nope"), target.to_str().unwrap());
+        let err = write_bundle_to_file(&root.path().join("nope"), target.to_str().unwrap(), false);
         assert!(err.is_err());
         // 失败不落任何文件（含 .tmp）
         assert!(!target.exists());
         assert!(!root.path().join("out.bundle.json.tmp").exists());
+    }
+
+    /// P25 compress=true：落盘为 zstd 帧（magic 28 B5 2F FD），解码后与 export_session
+    /// bundle Value 级相等（exportedAt 对齐）；返回值 = 压缩后文件字节数（D7）；
+    /// `.tmp` 中间态被 rename 消费。
+    #[test]
+    fn to_file_compress_produces_zstd_bundle() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("1730000000000");
+        fixture_session(&dir);
+        let target = root.path().join("out.bundle.json.zst");
+
+        let n = write_bundle_to_file(&dir, target.to_str().unwrap(), true).unwrap();
+        let raw = std::fs::read(&target).unwrap();
+        assert_eq!(
+            &raw[..4],
+            &[0x28, 0xB5, 0x2F, 0xFD],
+            "落盘应为 zstd 帧格式（magic bytes）"
+        );
+        // 返回值 = 压缩后文件字节数
+        assert_eq!(n, std::fs::metadata(&target).unwrap().len());
+        assert!(!root.path().join("out.bundle.json.zst.tmp").exists());
+        // 解码后 = 合法 v1 bundle（D2：交付文件层，解压即原文）
+        let plain = zstd::decode_all(raw.as_slice()).unwrap();
+        let written: Value = serde_json::from_slice(&plain).unwrap();
+        let mut expect = build_export_bundle(&dir).unwrap();
+        expect["exportedAt"] = written["exportedAt"].clone();
+        assert_eq!(
+            serde_json::to_string(&expect).unwrap(),
+            serde_json::to_string(&written).unwrap()
+        );
+    }
+
+    /// compress=true 失败同样清理 `.tmp` 残件。
+    #[test]
+    fn to_file_compress_errors_clean_tmp() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("out.bundle.json.zst");
+        let err =
+            write_bundle_to_file(&root.path().join("nope"), target.to_str().unwrap(), true);
+        assert!(err.is_err());
+        assert!(!target.exists());
+        assert!(!root.path().join("out.bundle.json.zst.tmp").exists());
     }
 
     // ---- P20：落盘根配置（dir_base/dir_name） ----

@@ -22,6 +22,10 @@ tauri-plugin-observer = "0.4"
 pnpm add @prism-obs/observer-tauri @prism-obs/observer-sdk
 ```
 
+## 依赖披露（0.7.0 起）
+
+自 0.7.0 起本 crate 含 **C 编译依赖 `zstd-sys`**（`zstd = "0.13"`，仅 `export_session_to_file` 的 `compress = true` 路径使用）：交叉编译需目标平台 C 工具链（cc）。仅需流式导出（内存恒定）不需要压缩交付的消费方，可钉 `tauri-plugin-observer = "=0.6.1"`（P25 论证改判前的 M1 里程碑版，按需补发——见 docs/阶段路径/P25-导出流式化与压缩交付.md 论证改判记录）。
+
 ## License
 
 MIT

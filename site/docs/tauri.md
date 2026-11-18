@@ -233,9 +233,15 @@ JS 侧 `initTauri({ mode: "local", appId, autoStart, ... })`（`endpoint` / `tok
 ```ts
 const sessions = await ctrl.listSessions();     // 本地会话元信息列表（仅 Local 可用）
 const bundle = await ctrl.exportSession(id);    // prism-session bundle JSON（仅 Local 可用）
-// 大会话推荐：插件直接写盘，返回写入字节数（仅 Local 可用，P18；path 常来自系统保存对话框）
+// 大会话推荐：插件流式写盘（P25，内存 O(缓冲+最长事件行)，GB 级会话不再爆内存），返回实际落盘字节数
+// （仅 Local 可用，P18；path 常来自系统保存对话框，产物后缀由你决定）
 const bytes = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json");
+// 压缩交付（预期 5-12x，IM 可转发）：true 落 .json.zst（zstd level 3）
+const zst = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json.zst", { compress: true });
 // 自行落盘 / 传输后，在 console 会话页「导入」即可回放 + 看诊断信号
+// （.json.zst 需先 `zstd -d` 解压——解压后即 bundle 原文，console 可直接导入）
+// 注意：坏段（gz 截断/损坏行）时导出仍成功，但该段产物只含损坏点前已解出的部分事件
+// 且无完整性标记，回放表现为该段提前定格；重要会话导出后建议以 console 导入回放核对完整性。
 
 // 一键批量上传到观测端（仅 Local 可用，P24）：串行导出 + POST /sessions/import，
 // 逐会话回执；ids 缺省 = 全部本地会话。重复上传会在观测端产生重复会话（import 换新 id）
@@ -247,7 +253,7 @@ const results = await ctrl.uploadSessions(undefined, {
 });
 ```
 
-两条闭环腿怎么选：`uploadSessions()` 直达观测端（server 可达时一键完成）；`exportSessionToFile` 产文件走人工导入（观测端不可达 / 超大会话兜底）。
+两条闭环腿怎么选：`uploadSessions()` 直达观测端（server 可达时一键完成）；`exportSessionToFile` 产文件走人工导入（观测端不可达 / 超大会话兜底；`.json.zst` 压缩件先 `zstd -d` 再导入）。另注：`export_session`（IPC 直返 bundle）在超大会话（GB 级）有内存峰值，此类会话请走 `exportSessionToFile` 路径（P25）。
 
 **上报地址热切**：endpoint / token 可存 localStorage，提供配置 UI 切换后 reload 即可（本地 server ↔ 云端 observer-server 自由切）。[examples/tauri-demo](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) 里有现成的配置 UI 可抄。
 

@@ -138,11 +138,19 @@ export interface TauriController {
   /** 仅 Local 模式可用（remote 抛错）：导出 prism-session bundle JSON，宿主自行落盘/传输。 */
   exportSession(sessionId: string): Promise<unknown>;
   /**
-   * 仅 Local 模式可用（remote 抛错）：导出 bundle 由插件直写 `path`，返回写入字节数
-   * （P18，D5 扩展）。大会话推荐——Rust 侧序列化 + 落盘，避开宿主 JS 主线程与大载荷 IPC；
-   * `.tmp` + rename 原子写。`path` 通常经系统 save 对话框取得。
+   * 仅 Local 模式可用（remote 抛错）：导出 bundle 由插件直写 `path`，返回**实际落盘
+   * 文件字节数**（P18，D5 扩展；P25 起压缩时为压缩后字节）。大会话推荐——P25 流式导出
+   * （内存 O(缓冲+最长单事件行)，GB 级会话不再峰值 10GB 级），Rust 侧直接落盘，避开宿主 JS 主线程
+   * 与大载荷 IPC；`.tmp` + rename 原子写，失败自动清理。`path` 通常经系统 save 对话框
+   * 取得，**产物后缀由调用方决定**：`opts.compress` 缺省 false 落明文 `.json`（console
+   * 可直接导入回放）；true 落 `.json.zst`（zstd level 3 压缩，预期 5-12x，研发侧
+   * `zstd -d` 解压后即 v1 bundle 原文，可回导 console）。
    */
-  exportSessionToFile(sessionId: string, path: string): Promise<number>;
+  exportSessionToFile(
+    sessionId: string,
+    path: string,
+    opts?: { compress?: boolean },
+  ): Promise<number>;
   /**
    * 一键打包上传（P24，仅 Local 模式，remote 抛错）：把本地落盘会话逐个导出为
    * prism-session bundle 并 POST 到观测端 `/sessions/import`。
@@ -378,9 +386,13 @@ export async function initTauri(opts: InitTauriOptions): Promise<TauriController
       if (!local) throw new Error("[observer-tauri] exportSession 仅 Local 模式可用");
       return invoke<unknown>("plugin:observer|export_session", { sessionId });
     },
-    async exportSessionToFile(sessionId: string, path: string) {
+    async exportSessionToFile(sessionId: string, path: string, opts?: { compress?: boolean }) {
       if (!local) throw new Error("[observer-tauri] exportSessionToFile 仅 Local 模式可用");
-      return invoke<number>("plugin:observer|export_session_to_file", { sessionId, path });
+      return invoke<number>("plugin:observer|export_session_to_file", {
+        sessionId,
+        path,
+        compress: opts?.compress ?? false,
+      });
     },
     // 一键打包上传（P24 D6/D7/D10）：ids 缺省取 list_sessions 全集；gzip "auto"
     // 批前探测一次（失败回退明文）；串行 for-await，单会话失败不中断（catch 继续）。

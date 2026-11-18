@@ -295,6 +295,129 @@ pub fn read_session_signals_json(dir: &Path) -> Result<String, String> {
     Ok(out)
 }
 
+/// 流式导出 bundle 到 writer（P25，[`build_export_bundle`] 的流式等价物）。
+///
+/// 骨架手写 JSON，segments 按 segmentId 字典序逐段流式：明文段
+/// `BufRead::read_line` 逐行；gz 段（`.jsonl.gz`）套 [`flate2::read::MultiGzDecoder`]
+/// 流式解压（复用 [`read_segment_first_line`] 验证过的多 member 模式）。每行 trim →
+/// 空行跳过 → `serde_json::from_str` 校验 → **通过则直写原文行文本**（不重序列化，
+/// 与 P19 D2 直拼精神一致）。session/windows/annotations 小件维持整读 + 序列化内嵌。
+///
+/// 失败分级（D6）：
+/// - **行级**（残行 / 坏 JSON / 单行非 UTF-8）：剔行继续——与 [`read_segment_events`]
+///   的 `filter_map` 剔行语义一致；
+/// - **流级**（gz 截断等导致 read 持续失败）：连续 8 次 Err 即停止续读该段，
+///   **保留已成功解出的行**，不中断导出——段键必存在，导出永不因坏段炸掉。
+///
+/// 与 [`build_export_bundle`] 的差异（预期改进，非回归）：整段非 UTF-8 / gz 截断时
+/// build 路径整段为空，流式保留损坏点之前已解出的行。正常数据下两者解压后
+/// Value 级 canonical 相等（键序不同：build 经 BTreeMap 重排，流式保留原文行键序）。
+///
+/// 内存 O(缓冲 + 最长单事件行)——不随会话总时长增长。返回写出的未压缩字节数。
+pub fn write_export_bundle_streaming(dir: &Path, w: &mut impl std::io::Write) -> Result<u64, String> {
+    use std::io::BufRead;
+
+    /// write_all + 字节计数（write! 到 impl Write 上做计数需要包装器，直接累计更直白）。
+    /// 参数 `impl std::io::Write` 的 bound 使 write_all 无需再 import trait。
+    fn put(w: &mut impl std::io::Write, s: &str, n: &mut u64) -> Result<(), String> {
+        w.write_all(s.as_bytes()).map_err(|e| e.to_string())?;
+        *n += s.len() as u64;
+        Ok(())
+    }
+
+    let session = serde_json::from_str::<Value>(
+        &fs::read_to_string(dir.join("session.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    // filter_map：单行损坏只跳过该行（与 build_export_bundle 一致）
+    let windows: Vec<Value> = fs::read_to_string(dir.join("windows.jsonl"))
+        .ok()
+        .map(|s| s.lines().filter_map(|l| serde_json::from_str(l).ok()).collect())
+        .unwrap_or_default();
+    let annotations = read_annotations(dir);
+
+    let mut n: u64 = 0;
+    let head = format!(
+        "{{\"format\":{},\"version\":{},\"exportedAt\":{},\"session\":{},\"windows\":{},\"segments\":{{",
+        serde_json::to_string(BUNDLE_FORMAT).map_err(|e| e.to_string())?,
+        BUNDLE_VERSION,
+        now_ms(),
+        session,
+        serde_json::to_string(&windows).map_err(|e| e.to_string())?,
+    );
+    put(w, &head, &mut n)?;
+
+    // 段枚举与 read_segments_dir 完全一致（不筛 is_file，读不出内容=空段），
+    // 输出前按 segmentId 字典序排序（D4：对齐 build_export_bundle 的 BTreeMap 键序）
+    let mut segs: Vec<(String, std::path::PathBuf)> = Vec::new();
+    if let Ok(entries) = fs::read_dir(dir.join("segments")) {
+        for e in entries.flatten() {
+            let path = e.path();
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            segs.push((segment_id_from_filename(&name).to_string(), path));
+        }
+    }
+    segs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut first_seg = true;
+    for (seg_id, path) in &segs {
+        if !first_seg {
+            put(w, ",", &mut n)?;
+        }
+        first_seg = false;
+        // 键经 serde 转义（文件名理论上可含 `"` 等），与 Map insert 的序列化行为一致
+        put(w, &serde_json::to_string(seg_id).map_err(|e| e.to_string())?, &mut n)?;
+        put(w, ":[", &mut n)?;
+        // open 失败（segments/ 混入子目录、权限异常、AV 锁定）= 空段：键保留、内容空
+        // （D6：导出不因坏段失败；与 build 路径 read_segment_text .ok() 的容忍语义对齐）
+        let Ok(f) = fs::File::open(path) else {
+            put(w, "]", &mut n)?;
+            continue;
+        };
+        let is_gz = path.extension().and_then(|e| e.to_str()) == Some("gz");
+        let mut reader: Box<dyn BufRead> = if is_gz {
+            Box::new(std::io::BufReader::new(flate2::read::MultiGzDecoder::new(f)))
+        } else {
+            Box::new(std::io::BufReader::new(f))
+        };
+        let mut first_line = true;
+        let mut err_streak = 0u32;
+        let mut buf = String::new();
+        loop {
+            buf.clear();
+            match reader.read_line(&mut buf) {
+                Ok(0) => break, // EOF
+                Ok(_) => {
+                    err_streak = 0;
+                    let t = buf.trim();
+                    if t.is_empty() || serde_json::from_str::<Value>(t).is_err() {
+                        continue; // 行级失败：剔行继续
+                    }
+                    if !first_line {
+                        put(w, ",", &mut n)?;
+                    }
+                    first_line = false;
+                    put(w, t, &mut n)?;
+                }
+                Err(_) => {
+                    // 行读失败（非 UTF-8 行 / 解压错误）：先按行级剔除继续；
+                    // 连续失败达上限（gz 截断等解压器卡死）停段，保留已解出行（D6）
+                    err_streak += 1;
+                    if err_streak >= 8 {
+                        break;
+                    }
+                }
+            }
+        }
+        put(w, "]", &mut n)?;
+    }
+
+    put(w, "},\"annotations\":", &mut n)?;
+    put(w, &serde_json::to_string(&annotations).map_err(|e| e.to_string())?, &mut n)?;
+    put(w, "}", &mut n)?;
+    Ok(n)
+}
+
 /// 读会话目录组装成 export bundle（不依赖 AppHandle，便于测试）。
 pub fn build_export_bundle(dir: &Path) -> Result<Value, String> {
     let session = serde_json::from_str::<Value>(
@@ -912,5 +1035,267 @@ mod tests {
         let txt = read_segment_json(&dir, "main#0").unwrap();
         let arr: Vec<Value> = serde_json::from_str(&txt).unwrap();
         assert_eq!(arr.len(), 1, "残行被跳过，其余行可解析");
+    }
+
+    // ---- P25：write_export_bundle_streaming（流式导出） ----
+
+    /// 流式导出收集器：返回（输出文本, 返回字节数）。
+    fn streaming_to_string(dir: &Path) -> (String, u64) {
+        let mut buf = Vec::new();
+        let n = write_export_bundle_streaming(dir, &mut buf).unwrap();
+        (String::from_utf8(buf).unwrap(), n)
+    }
+
+    /// 流式导出与 build_export_bundle 解压后 Value 级 canonical 相等（含混合明文+gz 段、
+    /// 空行/残行/坏 JSON 行剔除行为一致、CRLF 残行、windows/annotations 还原）；
+    /// 返回值 = 实际写出字节数（D7）。
+    #[test]
+    fn streaming_export_canonical_equivalence() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            dir.join("session.json"),
+            json!({"id":"s1","source":"tauri","startedAt":100,"endedAt":200}).to_string(),
+        )
+        .unwrap();
+        fs::write(
+            dir.join("windows.jsonl"),
+            "{not json}\n{\"type\":\"shown\",\"label\":\"main\",\"segmentId\":\"main#0\",\"t\":1}\n",
+        )
+        .unwrap();
+        // 明文段：合法行 + 空行 + 残行 + 坏 JSON 行 + CRLF 行
+        fs::write(
+            dir.join("segments").join("main#0.jsonl"),
+            "{\"type\":4,\"timestamp\":1}\n\n{\"type\":2,\"timesta\nnot json\n{\"type\":3,\"timestamp\":3}\r\n",
+        )
+        .unwrap();
+        // gz 段：两次追加 = 两个 member
+        crate::storage::append_events_file_with(
+            &dir,
+            "gz#0",
+            &[json!({"type":2,"timestamp":10}), json!({"type":6,"timestamp":11})],
+            &crate::storage::WriteOpts::gzip(),
+        )
+        .unwrap();
+        crate::storage::append_events_file_with(
+            &dir,
+            "gz#0",
+            &[json!({"type":3,"timestamp":12})],
+            &crate::storage::WriteOpts::gzip(),
+        )
+        .unwrap();
+        crate::annotations::write_annotations(
+            &dir,
+            &[json!({"id":"a1","t":5,"text":"note","author":"local","createdAt":6})],
+        )
+        .unwrap();
+
+        let (out, n) = streaming_to_string(&dir);
+        let streamed: Value = serde_json::from_str(&out).expect("流式输出必为合法 JSON");
+        let mut expect = build_export_bundle(&dir).unwrap();
+        expect["exportedAt"] = streamed["exportedAt"].clone(); // 对齐时间戳后比 Value
+        assert_eq!(
+            streamed, expect,
+            "流式导出与全量组装解压后 Value 级相等（剔除行为一致）"
+        );
+        // D7：返回值 = 输出字节数
+        assert_eq!(n, out.len() as u64);
+        // 剔除行为细化断言：明文段合法行 2 条（残行/空行/坏行剔除、CRLF 保留语义）
+        assert_eq!(streamed["segments"]["main#0"].as_array().unwrap().len(), 2);
+        assert_eq!(streamed["segments"]["gz#0"].as_array().unwrap().len(), 3);
+        assert_eq!(streamed["windows"].as_array().unwrap().len(), 1);
+        assert_eq!(streamed["annotations"].as_array().unwrap().len(), 1);
+    }
+
+    /// segments 输出按 segmentId 字典序（D4：对齐 build_export_bundle 的 BTreeMap 键序，
+    /// 与目录枚举序无关——创建顺序故意乱序）。
+    #[test]
+    fn streaming_export_segments_sorted_by_id() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+        for id in ["z#0", "a#0", "m#2", "b#0"] {
+            fs::write(dir.join("segments").join(format!("{id}.jsonl")), "{\"type\":2}\n").unwrap();
+        }
+        let (out, _) = streaming_to_string(&dir);
+        let (ia, ib, im, iz) = (
+            out.find("\"a#0\"").unwrap(),
+            out.find("\"b#0\"").unwrap(),
+            out.find("\"m#2\"").unwrap(),
+            out.find("\"z#0\"").unwrap(),
+        );
+        assert!(ia < ib && ib < im && im < iz, "segments 键须按字典序输出");
+        // 与 build_export_bundle 的 segments 键序一致
+        let build = build_export_bundle(&dir).unwrap();
+        let build_keys: Vec<&String> = build["segments"].as_object().unwrap().keys().collect();
+        let streamed_keys: Vec<String> = ["a#0", "b#0", "m#2", "z#0"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(build_keys, streamed_keys.iter().collect::<Vec<_>>());
+    }
+
+    /// gz 段截断（流级失败）：导出不失败，段键保留，保留已解出的行（D6 预期改进——
+    /// build_export_bundle 整段为空，流式保留损坏点之前的行）。
+    #[test]
+    fn streaming_export_tolerates_truncated_gzip() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+        let events: Vec<Value> = (0..50)
+            .map(|i| json!({"type":2,"timestamp":i}))
+            .collect();
+        crate::storage::append_events_file_with(&dir, "trunc#0", &events, &crate::storage::WriteOpts::gzip())
+            .unwrap();
+        let gz_path = dir.join("segments").join("trunc#0.jsonl.gz");
+        let full = fs::read(&gz_path).unwrap();
+        fs::write(&gz_path, &full[..full.len() / 2]).unwrap(); // 截断一半
+
+        let (out, _) = streaming_to_string(&dir);
+        let v: Value = serde_json::from_str(&out).expect("截断 gz 段不得炸导出");
+        let arr = v["segments"]["trunc#0"].as_array().expect("段键必保留");
+        assert!(
+            arr.len() > 0 && arr.len() < 50,
+            "截断 gz：损坏点前已解出的行必保留（D6 预期改进，非空非全量）"
+        );
+        // 对照：build_export_bundle 对同一文件整段剔为空（D6 注明的差异，属预期）
+        let build = build_export_bundle(&dir).unwrap();
+        assert_eq!(build["segments"]["trunc#0"].as_array().unwrap().len(), 0);
+    }
+
+    /// 明文段含非 UTF-8 字节（行级失败）：剔该行继续，前后合法行保留（build_export_bundle
+    /// 对整文件 read_to_string 失败 → 整段空——流式为预期改进）。
+    #[test]
+    fn streaming_export_skips_invalid_utf8_line() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+        fs::write(
+            dir.join("segments").join("bad#0.jsonl"),
+            b"{\"type\":2,\"timestamp\":1}\n{\"type\":3,\xFF\xFE}\n{\"type\":6,\"timestamp\":3}\n",
+        )
+        .unwrap();
+
+        let (out, _) = streaming_to_string(&dir);
+        let v: Value = serde_json::from_str(&out).expect("非 UTF-8 行不得炸导出");
+        let arr = v["segments"]["bad#0"].as_array().unwrap();
+        assert_eq!(arr.len(), 2, "坏行剔除，前后合法行保留");
+        assert_eq!(arr[0]["timestamp"], 1);
+        assert_eq!(arr[1]["timestamp"], 3);
+        // 对照：build 路径整段为空
+        let build = build_export_bundle(&dir).unwrap();
+        assert_eq!(build["segments"]["bad#0"].as_array().unwrap().len(), 0);
+    }
+
+    /// 缺 windows.jsonl / annotations.jsonl / segments 目录：默认空语义与 build_export_bundle
+    /// 一致，输出仍为合法 bundle。
+    #[test]
+    fn streaming_export_missing_optional_files() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+
+        let (out, _) = streaming_to_string(&dir);
+        let streamed: Value = serde_json::from_str(&out).unwrap();
+        let mut expect = build_export_bundle(&dir).unwrap();
+        expect["exportedAt"] = streamed["exportedAt"].clone();
+        assert_eq!(streamed, expect, "缺省文件默认空语义一致");
+        assert_eq!(streamed["windows"].as_array().unwrap().len(), 0);
+        assert_eq!(streamed["annotations"].as_array().unwrap().len(), 0);
+        assert_eq!(streamed["segments"].as_object().unwrap().len(), 0);
+    }
+
+    /// segments/ 混入打不开的条目（子目录等）：open 失败降级为空段键——导出不因坏段失败
+    /// （D6 + /regress 建议 1 收敛：旧实现此处 Err 冒泡会炸整个导出）。
+    #[test]
+    fn streaming_export_tolerates_unopenable_segment() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments").join("weird#0")).unwrap();
+        fs::write(
+            dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+        crate::storage::append_events_file(&dir, "ok#0", &[json!({"type":2,"timestamp":1})])
+            .unwrap();
+
+        let (out, _) = streaming_to_string(&dir);
+        let v: Value = serde_json::from_str(&out).expect("打不开的段不得炸导出");
+        assert_eq!(v["segments"]["ok#0"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            v["segments"]["weird#0"].as_array().unwrap().len(),
+            0,
+            "打不开的条目降级为空段键"
+        );
+    }
+
+    /// 消费链形态钉死（P25 论证裁决 d6-修订3）：截断 gz 会话 → 流式导出 → parse →
+    /// import → read_session_meta 读回。断言：段条目存在、firstTs == 段首 Meta、
+    /// 事件数非空非全量（前缀）。回放形态预期（usePlayer）：该段 hiddenAt 前恒 active，
+    /// 播完前缀后提前定格——与 build 路径「整段缺席」是两种形态，site 手册已注明。
+    #[test]
+    fn streaming_truncated_gzip_survives_import_chain() {
+        let root = tempdir().unwrap();
+        let dir = root.path().join("s1");
+        fs::create_dir_all(dir.join("segments")).unwrap();
+        fs::write(
+            dir.join("session.json"),
+            json!({"id":"s1","startedAt":1}).to_string(),
+        )
+        .unwrap();
+        let events: Vec<Value> = std::iter::once(
+            json!({"data":{"width":800,"height":600},"timestamp":1,"type":4}),
+        )
+        .chain((1..50).map(|i| json!({"type":2,"timestamp":i})))
+        .collect();
+        crate::storage::append_events_file_with(
+            &dir,
+            "trunc#0",
+            &events,
+            &crate::storage::WriteOpts::gzip(),
+        )
+        .unwrap();
+        let gz = dir.join("segments").join("trunc#0.jsonl.gz");
+        let full = fs::read(&gz).unwrap();
+        fs::write(&gz, &full[..full.len() / 2]).unwrap();
+
+        // 流式导出 → parse → import → 读回
+        let mut buf = Vec::new();
+        write_export_bundle_streaming(&dir, &mut buf).unwrap();
+        let bundle: Value = serde_json::from_slice(&buf).unwrap();
+        let dst = tempdir().unwrap();
+        let new_id = import_bundle(dst.path(), &bundle).unwrap();
+        let meta = read_session_meta(&dst.path().join(&new_id)).unwrap();
+        let idx = meta["segments"].as_array().unwrap();
+        assert_eq!(idx.len(), 1, "段条目必存在");
+        assert_eq!(idx[0]["segmentId"], "trunc#0");
+        assert_eq!(idx[0]["firstTs"], 1, "段首 Meta 行经前缀保留仍可读");
+        let last = idx[0]["lastTs"].as_i64().expect("lastTs 非空（前缀内）");
+        assert!(
+            last > 0 && last < 49,
+            "lastTs 落在前缀内（非空非全量），got {last}"
+        );
     }
 }

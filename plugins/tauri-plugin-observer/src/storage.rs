@@ -12,7 +12,10 @@ pub use observer_storage::storage::{
     append_events_file, append_lifecycle, create_session, finalize_session, now_ms,
 };
 // P16：Local 模式只读命令（list/export）复用的 bundle 契约函数。
-pub use observer_storage::bundle::{build_export_bundle, list_sessions, validate_session_id};
+// P25：write_export_bundle_streaming 流式写出（export_session_to_file 导出链）。
+pub use observer_storage::bundle::{
+    build_export_bundle, list_sessions, validate_session_id, write_export_bundle_streaming,
+};
 
 use std::path::PathBuf;
 

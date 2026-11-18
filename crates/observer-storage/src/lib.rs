@@ -17,8 +17,8 @@ pub use annotations::{annotations_path, read_annotations, write_annotations};
 pub use bundle::{
     build_export_bundle, import_bundle, import_bundle_content, list_sessions, merge_session_meta,
     parse_bundle, read_segment_json, read_session, read_session_meta, read_session_signals_json,
-    unique_id, validate_segment_id, validate_session_id, write_import_bundle, BUNDLE_FORMAT,
-    BUNDLE_VERSION,
+    unique_id, validate_segment_id, validate_session_id, write_export_bundle_streaming,
+    write_import_bundle, BUNDLE_FORMAT, BUNDLE_VERSION,
 };
 pub use redact::{redact_bundle, RedactConfig, RedactOpts};
 pub use retention::{enforce_retention, enforce_retention_protect, RetentionPolicy};

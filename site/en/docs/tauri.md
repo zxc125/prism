@@ -235,10 +235,20 @@ JS side: `initTauri({ mode: "local", appId, autoStart, ... })` (`endpoint` / `to
 ```ts
 const sessions = await ctrl.listSessions();     // local session metadata list (Local mode only)
 const bundle = await ctrl.exportSession(id);    // prism-session bundle JSON (Local mode only)
-// large sessions: let the plugin write the file directly, returns bytes written (Local mode only;
-// the path usually comes from the system save dialog)
+// large sessions: let the plugin stream the file directly (P25, O(buffer + longest event line)
+// memory — GB-level sessions no longer blow up memory); returns bytes actually written to disk (Local mode only;
+// the path usually comes from the system save dialog, you decide the file extension)
 const bytes = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json");
+// compressed delivery (expect 5-12x, IM-forwardable): true writes .json.zst (zstd level 3)
+const zst = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json.zst", { compress: true });
 // save / transport it yourself, then import it on the console sessions page for replay + diagnostics
+// (.json.zst needs `zstd -d` first — the decompressed file is the bundle itself, importable as-is)
+// Note: if a segment file is corrupt (truncated gz / bad lines), the export still succeeds, but that
+// segment only contains the events decompressed before the corruption point (no integrity marker) and
+// replays as an early freeze-frame — verify important exports by importing them into the console.
+
+// Note: `export_session` (IPC bundle return) holds the whole bundle in memory — for GB-level
+// sessions prefer the exportSessionToFile path above (P25 streaming).
 ```
 
 **Hot-switch the endpoint**: store endpoint/token in localStorage, provide a config UI, reload to re-init (local server ↔ cloud observer-server). [examples/tauri-demo](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) ships a ready-made config UI you can copy.

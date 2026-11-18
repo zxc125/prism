@@ -49,7 +49,8 @@ export interface SessionData {
 export interface SegmentIndexEntry {
   segmentId: string;
   bytes: number;
-  /** 录制时视口尺寸（取自段首行 Meta 事件）；缺失为 null（回放侧不缩放）。 */
+  /** 录制时视口尺寸（取自段首行 Meta 事件，仅作初始值）；缺失为 null（回放侧
+   *  会从段事件流的尺寸标记点取段内实际视口，见 usePlayer.buildSizeMarks）。 */
   width: number | null;
   height: number | null;
   /** 首/尾事件的 timestamp。`lastTs` 是时长兜底：外部应用导出的会话常常既无

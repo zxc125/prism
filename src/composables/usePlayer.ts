@@ -1,4 +1,4 @@
-import { Replayer, type eventWithTime } from "rrweb";
+import { Replayer, ReplayerEvents, type eventWithTime } from "rrweb";
 import { ref, computed } from "vue";
 import { getBackend, type SessionMetaPayload } from "./backend";
 
@@ -24,8 +24,10 @@ type SegmentInfo = {
   hiddenAt: number | null; // null = 持续到会话结束
   replayer: Replayer | null;
   container: HTMLDivElement | null;
-  origW: number; // 录制时视口宽（Meta 事件），用于等比缩放
+  origW: number; // 当前应呈现的录制视口宽（段首 Meta 或段内 ViewportResize），用于等比缩放
   origH: number;
+  /** 段内尺寸标记点（/fix 段内 resize 跟随）：首 Meta + 每个 ViewportResize；cold 时为 null。 */
+  sizeMarks: SizeMark[] | null;
   /** 诊断信号是否已并入全量流：段被回收后重载不得重复追加（P19 回归修复）。 */
   signalsCollected: boolean;
   /** 加载失败重试计数与下次可重试时刻（退避，见 maybeRetry）。 */
@@ -43,6 +45,9 @@ const RETRY_DELAY_MS = 3000;
 const MAX_RETRIES = 3;
 
 type TimelineBand = { labelIdx: number; start: number; end: number };
+
+/** 段内视口尺寸标记点：时刻 t 起视口变为 w×h（/fix 段内 resize 跟随）。 */
+type SizeMark = { t: number; w: number; h: number };
 
 // 诊断信号（交错事件模型 type:6 的回放侧投影）。
 // text 在 load() 时一次算好（P19 D7）：避免模板每次重渲染重复 JSON.stringify。
@@ -179,6 +184,7 @@ export function usePlayer(sessionId: string) {
         container: null,
         origW: entry.width ?? 0,
         origH: entry.height ?? 0,
+        sizeMarks: null,
         signalsCollected: false,
         retries: 0,
         retryAt: 0,
@@ -331,6 +337,12 @@ export function usePlayer(sessionId: string) {
     slot.appendChild(root);
     seg.container = root;
     seg.replayer = new Replayer(seg.events, { root, speed: speed.value });
+    // 段内 resize 跟随（/fix）：忽略 payload、一律按播放头重算——rrweb 构造器会把
+    // 段首尺寸 setTimeout(0) 延迟 emit，晚于 pause(offset) 同步 cast 的正确尺寸；
+    // 按播放头重算可免疫这种乱序（迟到的段首 emit 反被纠正回播放头应有尺寸）。
+    seg.replayer.on(ReplayerEvents.Resize, () => {
+      applySizeAt(seg, startTs + currentTime.value);
+    });
     ro?.observe(root);
 
     const absT = startTs + currentTime.value;
@@ -343,6 +355,7 @@ export function usePlayer(sessionId: string) {
     } else {
       seg.replayer.pause(offset);
     }
+    applySizeAt(seg, absT); // 段内 resize 跟随：挂载即对齐播放头尺寸
     fitSegment(seg);
   }
 
@@ -356,6 +369,7 @@ export function usePlayer(sessionId: string) {
       seg.container = null;
     }
     seg.events = null;
+    seg.sizeMarks = null;
     seg.state = "cold";
   }
 
@@ -417,12 +431,15 @@ export function usePlayer(sessionId: string) {
       )) as RREvent[];
       if (destroyed) return;
       seg.events = events;
+      seg.sizeMarks = buildSizeMarks(events); // 段内尺寸真相源（索引只有段首，见 segment_index）
       if (events.length) {
         seg.firstTs = events[0].timestamp;
         seg.lastTs = events[events.length - 1].timestamp;
       }
       seg.state = "ready";
       mountSegment(seg);
+      // 播放头已在段中段时对齐尺寸（兜住「seek 进放大区后段才拉回」的场景）
+      applySizeAt(seg, startTs + currentTime.value);
       collectSignals(seg);
       syncVisibility(startTs + currentTime.value);
       fitAll();
@@ -567,6 +584,54 @@ export function usePlayer(sessionId: string) {
   }
 
   /**
+   * 从段事件流提取尺寸标记点（/fix 段内 resize 跟随）：首 Meta（type 4）+ 每个
+   * ViewportResize（type 3, source 4）。rrweb 录制端对视口 resize 无条件采集
+   * （不受 sampling/档位门控），数据恒在段流内；storage 段索引只读首行（P19 D1），
+   * 段内变化只能由回放侧从已按需拉取的事件流里取——这里就是尺寸真相源。
+   */
+  function buildSizeMarks(events: RREvent[]): SizeMark[] {
+    const marks: SizeMark[] = [];
+    for (const e of events) {
+      const d = e.data as { width?: unknown; height?: unknown; source?: unknown };
+      if (typeof d?.width !== "number" || typeof d?.height !== "number") continue;
+      if (e.type === 4 || (e.type === 3 && d.source === 4)) {
+        marks.push({ t: e.timestamp, w: d.width, h: d.height });
+      }
+    }
+    return marks;
+  }
+
+  /**
+   * 把段的呈现尺寸对齐到播放头时刻应有的视口（/fix 段内 resize 跟随）。
+   * 只写 origW/origH + iframe/canvas 属性 + wrapper transform，绝不触碰 Replayer
+   * 播放状态（P19 D4 无纠偏红线）。iframe 属性无条件对齐：rrweb 构造器会把段首
+   * 尺寸 setTimeout(0) 延迟 emit（晚于 pause(offset) 同步 cast 的正确尺寸），
+   * seek/重挂载场景会把已放大的 iframe 打回段首尺寸，这里兜底校正（幂等廉价）。
+   * wrapper 走 diff 守卫：尺寸没变不重写样式（D8 diff 纪律）。
+   */
+  function applySizeAt(seg: SegmentInfo, absT: number) {
+    const marks = seg.sizeMarks;
+    if (!marks || !marks.length) return;
+    let target = marks[0];
+    for (const m of marks) {
+      if (m.t <= absT) target = m;
+      else break;
+    }
+    if (seg.container) {
+      // 与 rrweb 内部 handleResize 同形：iframe + mouseTail canvas 的 width/height 属性
+      const frames = seg.container.querySelectorAll<HTMLElement>("iframe, canvas");
+      for (const el of frames) {
+        el.setAttribute("width", String(target.w));
+        el.setAttribute("height", String(target.h));
+      }
+    }
+    if (target.w === seg.origW && target.h === seg.origH) return;
+    seg.origW = target.w;
+    seg.origH = target.h;
+    fitSegment(seg);
+  }
+
+  /**
    * 等比缩放：rrweb Replayer 按录制时原始像素渲染，需把 .replayer-wrapper
    * 固定为原始尺寸，再 transform: scale() fit-contain 到 tile-root，并居中。
    * spotlight 主区放大/窗口尺寸变化时由 ResizeObserver 触发重算。
@@ -622,6 +687,7 @@ export function usePlayer(sessionId: string) {
     for (const seg of activeAt(absT)) {
       seg.replayer?.setConfig({ speed: speed.value });
       seg.replayer?.play(Math.max(0, absT - seg.firstTs));
+      applySizeAt(seg, absT); // 段内 resize 跟随：开播即对齐播放头尺寸
     }
     lastTick = performance.now();
     tickTimer = window.setInterval(tick, 50);
@@ -648,6 +714,7 @@ export function usePlayer(sessionId: string) {
         // 对齐只发生在段激活 / 用户 seek / 暂停 / 切倍速四个时点，段边界天然是同步点。
         seg.replayer?.setConfig({ speed: speed.value });
         seg.replayer?.play(Math.max(0, absT - seg.firstTs));
+        applySizeAt(seg, absT); // 段内 resize 虽由 rrweb resize emit 实时跟随，激活点兜底一次
       }
     }
     // 已失活的段：暂停
@@ -686,6 +753,7 @@ export function usePlayer(sessionId: string) {
       } else {
         seg.replayer?.pause(offset);
       }
+      applySizeAt(seg, absT); // 段内 resize 跟随：seek 越过尺寸标记点时对齐 wrapper
     }
   }
 

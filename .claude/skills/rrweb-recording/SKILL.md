@@ -54,7 +54,7 @@ recordings/<sessionId>/
 - **JSONL 格式**：可流式追加、断电不丢整文件、回放按行 parse。
 - **稳定槽位 + spotlight 主窗口**：回放时每个 label 占一个固定网格槽位（不随 show/hide reflow）；主窗口由 focus 时间线自动跟踪或手动选择，占大格，其余为侧槽。主槽/侧槽切换只改 CSS class（`is-main` + `grid-row:1/-1`），**不 reparent** Replayer 容器--rrweb 用 iframe 承载 mirror，reparent 会触发重新加载。
 - **动态 tile 元素不可用 scoped CSS**：`usePlayer` 用 `document.createElement` 创建 `.tile-slot/.tile-header/.tile-root/.tile-placeholder`，不带 scoped 的 `data-v` 属性，`<style scoped>` 选择器全部失配（曾导致 spotlight 不跨行 + 横向溢出）。相关规则放 PlayerView 的非 scoped `<style>` 块（以 `.grid` 限定作用域），并配 `min-width:0` + `minmax(0,...)` 列模板防 rrweb 原始宽度撑爆网格。
-- **tile 等比缩放（方案 E）**：`.replayer-wrapper` 固定为录制视口尺寸（Meta 事件的 width/height），`transform: translate() scale()` fit-contain 到 `.tile-root` 并居中、`transform-origin: top left`；`ResizeObserver` 监听各 tile-root，spotlight 切主 / 窗口缩放 / 段显隐时重算。
+- **tile 等比缩放（方案 E）**：`.replayer-wrapper` 固定为录制视口尺寸（初始取段索引的段首 Meta 宽高，段内跟随 ViewportResize 更新），`transform: translate() scale()` fit-contain 到 `.tile-root` 并居中、`transform-origin: top left`；`ResizeObserver` 监听各 tile-root，spotlight 切主 / 窗口缩放 / 段显隐时重算。段内尺寸变化（如窗口中途最大化）由 `buildSizeMarks`（从段事件流提取 Meta/ViewportResize 尺寸点）+ `applySizeAt`（按播放头对齐）+ `ReplayerEvents.Resize` 订阅驱动，seek 双向正确。
 - **同步策略（P19 重写，原「漂移阈值纠偏/方案 B」已废弃）**：播放中**不做**任何纠偏——rrweb 的 `play(offset)` 在非 paused 态会先 PAUSE 再 PLAY，等于一次 O(段首→offset) 的全量同步重放，阈值纠偏在大会话上构成「越纠越卡」的正反馈（实测全片 11,165 tick 触发 11.6 万次 `play()`，废弃后仅 27 次=每段激活一次）。对齐只发生在四个时点：段激活 / 用户 seek / 暂停 / 切倍速，段边界是天然同步点。`activeAt()` **必须按 label 去重**（每 label 至多取 `shownAt` 最大的一段）——缺 `hidden` 事件的会话（外部导入常见）下不去重会让 tick 把全部历史段当「新激活」。「方案 A 主时钟步进」（每帧 `pause(offset)`）已证伪：rrweb 2.1.1 上每帧一次全量 cast，比纠偏更糟。侧槽允许有界漂移，只保证 spotlight 主窗口精确。
 - **focus 时间线**：`windows.jsonl` 的 focus 事件驱动自动主窗口；`start_session` 时补记初始 focus（遍历 `webview_windows().is_focused()`），避免 t=0 时间线为空；player-* 窗口的 focus 已过滤，不产生孤儿记录。
 - **交错诊断信号（type:6）**：error/console/network 信号以 rrweb plugin 事件（`type:6`，`data:{plugin,payload}`）交错进同一段事件流，与 DOM 共享绝对时间戳，无需跨流对齐。采集侧 `useRecorder` 在段录制期间安装 hook（error: `onerror`+`unhandledrejection`；console: patch log/warn/error/info/debug + args 序列化截断循环引用；network: patch `fetch`+`XMLHttpRequest`，默认不记 body/headers），经同一 `emit` 落盘，并带 `delay` 供 Replayer 调度安全。回放侧 `usePlayer` 从各 segment 收集 type:6 为统一信号流 + error 红标；rrweb Replayer 对无 handler 的 plugin 事件 no-op，不影响 DOM 回放。
@@ -100,7 +100,7 @@ recordings/<sessionId>/
 - 稳定槽位布局：每个 label 一个固定网格槽位，show/hide 不 reflow；隐藏窗口显示占位。
 - spotlight 主窗口：focus 时间线自动跟踪 + 手动点击选主 + 自动跟随开关；主槽占大格、侧槽堆叠，CSS 切换不 reparent。
 - 时间轴色带：主进度条上方叠加每窗口活跃区间色带 + focus 切换标记 + playhead，支持点击 seek。
-- tile 等比缩放（方案 E）：`.replayer-wrapper` 固定为录制视口尺寸（Meta 事件的 width/height），`transform: scale()` fit-contain 到 tile-root 并居中；spotlight 切主 / 窗口缩放 / 段显隐由 `ResizeObserver` 自动重算。
+- tile 等比缩放（方案 E）：`.replayer-wrapper` 尺寸初始取段首 Meta，段内跟随 ViewportResize 更新（`buildSizeMarks` + `applySizeAt` + `ReplayerEvents.Resize` 订阅），`transform: scale()` fit-contain 到 tile-root 并居中；spotlight 切主 / 窗口缩放 / 段显隐由 `ResizeObserver` 自动重算。
 - 漂移阈值纠偏（P19 已废弃）：播放中不再做任何 re-seek——rrweb `play(offset)` 在非 paused 态是一次全量重放，纠偏在大会话上是正反馈。对齐只发生在段激活 / seek / 暂停 / 切倍速四个时点。
 - focus 数据补强：会话开始补记初始 focus、过滤 player-* focus 事件。
 - 诊断信号采集（P2）：error/console/network hook 在段录制期间 emit `type:6` 交错事件，与 DOM 同流落盘；console args 序列化（截断循环引用、Node/Error 转结构），network 默认不记 body/headers。

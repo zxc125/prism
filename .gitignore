@@ -15,6 +15,10 @@ dist-ssr
 # Rust / Cargo（各 crate 的编译产物，统一忽略）
 target/
 
+# 部署产物（scripts/deploy-console.sh 打包：二进制 + dist，不进 git）
+prism-deploy.tar.gz
+*.deploy-tmp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

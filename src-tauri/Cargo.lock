@@ -61,6 +61,7 @@ dependencies = [
  "tauri-plugin-observer",
  "tauri-plugin-opener",
  "tempfile",
+ "zstd",
 ]
 
 [[package]]

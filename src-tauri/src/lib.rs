@@ -177,13 +177,27 @@ async fn import_session(app: AppHandle, content: String) -> Result<String, Strin
         .map_err(|e| e.to_string())?
 }
 
-/// 从文件路径导入会话 bundle（Rust 侧读文件，避免大 JSON 过 IPC）。
-/// P17 D3 同类遗漏补修：读盘 + 解析大会话 bundle 同属秒级操作。
+/// 读 bundle 文件为 JSON 文本；`.zst` 后缀（P25 D12 兑现）先 zstd 流式解压——
+/// 下游经 `export_session_to_file(compress: true)` 交付的 `.json.zst` console 直接收。
+fn read_bundle_text(path: &str) -> Result<String, String> {
+    let bytes = fs::read(path).map_err(|e| format!("读取文件失败：{e}"))?;
+    if path.to_lowercase().ends_with(".zst") {
+        let decoded =
+            zstd::stream::decode_all(&bytes[..]).map_err(|e| format!("zstd 解压失败：{e}"))?;
+        String::from_utf8(decoded).map_err(|e| format!("解压后内容非 UTF-8 JSON：{e}"))
+    } else {
+        String::from_utf8(bytes).map_err(|e| format!("文件内容非 UTF-8 JSON：{e}"))
+    }
+}
+
+/// 从文件路径导入会话 bundle（Rust 侧读文件，避免大 JSON 过 IPC；`.json.zst`
+/// 自动解压，见 read_bundle_text）。P17 D3 同类遗漏补修：读盘 + 解析大会话
+/// bundle 同属秒级操作。
 #[tauri::command(async)]
 async fn import_session_path(app: AppHandle, path: String) -> Result<String, String> {
     let root = recordings_root(&app);
     tauri::async_runtime::spawn_blocking(move || {
-        let content = fs::read_to_string(&path).map_err(|e| format!("读取文件失败：{e}"))?;
+        let content = read_bundle_text(&path)?;
         import_bundle_content(&root, &content)
     })
     .await
@@ -252,4 +266,28 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// P25 D12 兑现：read_bundle_text 对 `.zst` 后缀自动 zstd 解压，纯 JSON 透传。
+    #[test]
+    fn read_bundle_text_supports_zst() {
+        let dir = tempfile::tempdir().unwrap();
+        let plain = r#"{"format":"prism-session","version":1}"#;
+        // 纯 JSON 透传，行为与旧 read_to_string 一致
+        let p1 = dir.path().join("a.json");
+        fs::write(&p1, plain).unwrap();
+        assert_eq!(read_bundle_text(p1.to_str().unwrap()).unwrap(), plain);
+        // P25 压缩交付物 `.json.zst`（export_session_to_file compress:true 同款编码）
+        let p2 = dir.path().join("b.json.zst");
+        fs::write(&p2, zstd::stream::encode_all(plain.as_bytes(), 3).unwrap()).unwrap();
+        assert_eq!(read_bundle_text(p2.to_str().unwrap()).unwrap(), plain);
+        // 非 zstd 内容冒充 .zst：明确报错而非 panic
+        let p3 = dir.path().join("c.json.zst");
+        fs::write(&p3, b"not-zstd").unwrap();
+        assert!(read_bundle_text(p3.to_str().unwrap()).unwrap_err().contains("zstd"));
+    }
 }

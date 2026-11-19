@@ -61,7 +61,7 @@ export async function pickBundleFiles(multiple = false): Promise<PickedBundle[] 
     const { open } = await import("@tauri-apps/plugin-dialog");
     const picked = await open({
       multiple,
-      filters: [{ name: "会话 bundle", extensions: ["json"] }],
+      filters: [{ name: "会话 bundle", extensions: ["json", "zst"] }],
     });
     if (picked === null) return null;
     const paths = Array.isArray(picked) ? picked : [picked];
@@ -101,13 +101,16 @@ export async function pickBundleFile(): Promise<
  * - Tauri：webview `dragDropEnabled`（默认开）会拦截 HTML5 drop 事件，必须走
  *   `onDragDropEvent`（返回真实文件系统 path）；
  * - 浏览器：HTML5 drag 事件 + FileReader 读 content。
- * JSON 以外的文件被忽略。返回取消监听函数。
+ * JSON 以外的文件被忽略（桌面模式额外放行 `.zst`，P25 D12 兑现——Rust 侧按后缀
+ * zstd 解压；浏览器模式无解压能力仍只认 `.json`）。返回取消监听函数。
  */
 export async function onBundleFileDrop(handlers: {
   onHoverChange: (hovering: boolean) => void;
   onDrop: (items: PickedBundle[]) => void;
 }): Promise<() => void> {
   const isJson = (name: string) => name.toLowerCase().endsWith(".json");
+  const isBundleFile = (name: string) =>
+    isJson(name) || name.toLowerCase().endsWith(".zst");
   if (isTauri()) {
     const { getCurrentWebviewWindow } = await import("@tauri-apps/api/webviewWindow");
     const un = await getCurrentWebviewWindow().onDragDropEvent((ev) => {
@@ -119,7 +122,7 @@ export async function onBundleFileDrop(handlers: {
       } else if (p.type === "drop") {
         handlers.onHoverChange(false);
         const items = (p.paths ?? [])
-          .filter((path) => isJson(path))
+          .filter((path) => isBundleFile(path))
           .map((path) => ({ path, name: nameOfPath(path) }));
         if (items.length) handlers.onDrop(items);
       }

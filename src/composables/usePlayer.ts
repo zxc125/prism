@@ -337,11 +337,16 @@ export function usePlayer(sessionId: string) {
     slot.appendChild(root);
     seg.container = root;
     seg.replayer = new Replayer(seg.events, { root, speed: speed.value });
-    // 段内 resize 跟随（/fix）：忽略 payload、一律按播放头重算——rrweb 构造器会把
-    // 段首尺寸 setTimeout(0) 延迟 emit，晚于 pause(offset) 同步 cast 的正确尺寸；
-    // 按播放头重算可免疫这种乱序（迟到的段首 emit 反被纠正回播放头应有尺寸）。
-    seg.replayer.on(ReplayerEvents.Resize, () => {
-      applySizeAt(seg, startTs + currentTime.value);
+    // 段内 resize 跟随（/fix）：直接采信 payload——rrweb 内部时钟才是事件的权威
+    // 时刻表，按播放头重算会因 50ms tick 滞后漏掉唯一一次的 resize emit（画面
+    // 永远卡小窗）。构造器会 setTimeout(0) 延迟 emit 段首尺寸（晚于 pause(offset)
+    // 同步 cast 的正确尺寸），由下方排在其后的定时器重断言纠正。
+    seg.replayer.on(ReplayerEvents.Resize, (evt) => {
+      const d = evt as { width: number; height: number };
+      seg.origW = d.width;
+      seg.origH = d.height;
+      applyIframeSize(seg, d.width, d.height);
+      fitSegment(seg);
     });
     ro?.observe(root);
 
@@ -357,6 +362,11 @@ export function usePlayer(sessionId: string) {
     }
     applySizeAt(seg, absT); // 段内 resize 跟随：挂载即对齐播放头尺寸
     fitSegment(seg);
+    // 兜底构造器的延迟段首 emit：我们的定时器排在 rrweb 构造器的之后（同任务
+    // FIFO），最后执行——把 seek/重挂载场景被回打的尺寸纠正回播放头应有值。
+    window.setTimeout(() => {
+      if (seg.replayer && !destroyed) applySizeAt(seg, startTs + currentTime.value);
+    }, 0);
   }
 
   /** 卸载一段：销毁 Replayer、移除容器、释放事件数组（P19 D3 回收）。 */
@@ -609,6 +619,18 @@ export function usePlayer(sessionId: string) {
    * seek/重挂载场景会把已放大的 iframe 打回段首尺寸，这里兜底校正（幂等廉价）。
    * wrapper 走 diff 守卫：尺寸没变不重写样式（D8 diff 纪律）。
    */
+  /** iframe + mouseTail canvas 的 width/height 属性对齐（与 rrweb 内部 handleResize
+   * 同形）：seek/重挂载场景 rrweb 构造器的延迟段首 emit 会把已放大的 iframe 打回
+   * 段首尺寸，这里兜底校正（幂等廉价）。 */
+  function applyIframeSize(seg: SegmentInfo, w: number, h: number) {
+    if (!seg.container) return;
+    const frames = seg.container.querySelectorAll<HTMLElement>("iframe, canvas");
+    for (const el of frames) {
+      el.setAttribute("width", String(w));
+      el.setAttribute("height", String(h));
+    }
+  }
+
   function applySizeAt(seg: SegmentInfo, absT: number) {
     const marks = seg.sizeMarks;
     if (!marks || !marks.length) return;
@@ -617,14 +639,7 @@ export function usePlayer(sessionId: string) {
       if (m.t <= absT) target = m;
       else break;
     }
-    if (seg.container) {
-      // 与 rrweb 内部 handleResize 同形：iframe + mouseTail canvas 的 width/height 属性
-      const frames = seg.container.querySelectorAll<HTMLElement>("iframe, canvas");
-      for (const el of frames) {
-        el.setAttribute("width", String(target.w));
-        el.setAttribute("height", String(target.h));
-      }
-    }
+    applyIframeSize(seg, target.w, target.h);
     if (target.w === seg.origW && target.h === seg.origH) return;
     seg.origW = target.w;
     seg.origH = target.h;

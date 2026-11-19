@@ -239,7 +239,7 @@ const bytes = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json")
 // 压缩交付（预期 5-12x，IM 可转发）：true 落 .json.zst（zstd level 3）
 const zst = await ctrl.exportSessionToFile(id, "/path/to/session.bundle.json.zst", { compress: true });
 // 自行落盘 / 传输后，在 console 会话页「导入」即可回放 + 看诊断信号
-// （.json.zst 需先 `zstd -d` 解压——解压后即 bundle 原文，console 可直接导入）
+// （console 0.1.4 起可直接导入 .json.zst；旧版 console 可先 `zstd -d` 解压后导入）
 // 注意：坏段（gz 截断/损坏行）时导出仍成功，但该段产物只含损坏点前已解出的部分事件
 // 且无完整性标记，回放表现为该段提前定格；重要会话导出后建议以 console 导入回放核对完整性。
 
@@ -253,7 +253,7 @@ const results = await ctrl.uploadSessions(undefined, {
 });
 ```
 
-两条闭环腿怎么选：`uploadSessions()` 直达观测端（server 可达时一键完成）；`exportSessionToFile` 产文件走人工导入（观测端不可达 / 超大会话兜底；`.json.zst` 压缩件先 `zstd -d` 再导入）。另注：`export_session`（IPC 直返 bundle）在超大会话（GB 级）有内存峰值，此类会话请走 `exportSessionToFile` 路径（P25）。
+两条闭环腿怎么选：`uploadSessions()` 直达观测端（server 可达时一键完成）；`exportSessionToFile` 产文件走人工导入（观测端不可达 / 超大会话兜底；`.json.zst` 压缩件 console 0.1.4+ 可直接导入，旧版先 `zstd -d`）。另注：`export_session`（IPC 直返 bundle）在超大会话（GB 级）有内存峰值，此类会话请走 `exportSessionToFile` 路径（P25）。
 
 **上报地址热切**：endpoint / token 可存 localStorage，提供配置 UI 切换后 reload 即可（本地 server ↔ 云端 observer-server 自由切）。[examples/tauri-demo](https://github.com/zxc125/prism/tree/main/examples/tauri-demo) 里有现成的配置 UI 可抄。
 
